@@ -1,0 +1,23 @@
+# AWS Amplify Hosting build spec (monorepo: only the Angular app in web/ is deployed).
+# In the Amplify console, set the environment variable AMPLIFY_MONOREPO_APP_ROOT=web.
+version: 1
+applications:
+  - appRoot: web
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - nvm install 24 && nvm use 24
+            # npm workspaces: install from the repo root
+            - (cd .. && npm ci)
+        build:
+          commands:
+            # Prerenders every page, post and project currently published in Sanity
+            - npm run build
+      artifacts:
+        baseDirectory: dist/web/browser
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - .angular/cache/**/*

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.angular/
+.sanity/
+.env
+.env.local
+*.log
+.DS_Store
+
+# Local secrets — never commit
+*DONOTSAVE*
+*.token.txt

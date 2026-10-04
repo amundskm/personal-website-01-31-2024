@@ -1,0 +1,64 @@
+@use 'mixins' as *;
+
+.hero {
+  padding-block: var(--space-16);
+}
+
+.hero__inner {
+  display: grid;
+  gap: var(--space-10);
+  text-align: center;
+  justify-items: center;
+}
+
+.hero__content {
+  max-width: 48rem;
+}
+
+.hero__heading {
+  margin: 0;
+  font-size: var(--text-hero);
+  line-height: 1.08;
+}
+
+.hero__subheading {
+  margin: var(--space-5) 0 0;
+  font-size: var(--text-lg);
+  color: var(--color-muted);
+}
+
+.button-row {
+  margin-top: var(--space-8);
+  justify-content: center;
+}
+
+.hero__media {
+  width: 100%;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+}
+
+.hero__mascot {
+  width: 100%;
+  max-width: 22rem;
+}
+
+.hero--split {
+  .hero__inner {
+    text-align: left;
+    justify-items: start;
+    align-items: center;
+
+    @include from(md) {
+      grid-template-columns: 1.25fr 1fr;
+    }
+  }
+
+  .hero__mascot {
+    justify-self: center;
+  }
+
+  .button-row {
+    justify-content: flex-start;
+  }
+}

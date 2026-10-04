@@ -1,0 +1,15 @@
+.image-block {
+  margin-block: 0;
+
+  &.container app-sanity-image {
+    overflow: hidden;
+    border-radius: var(--radius-lg);
+  }
+}
+
+figcaption {
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  text-align: center;
+}

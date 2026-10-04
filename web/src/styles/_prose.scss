@@ -1,0 +1,196 @@
+// Typography for rendered rich text (Portable Text). Applied via the `.prose`
+// class that <app-portable-text> puts on itself.
+
+.prose {
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+
+  p,
+  ul,
+  ol,
+  blockquote,
+  figure {
+    margin-block: 0 var(--space-5);
+  }
+
+  h2 {
+    margin: var(--space-12) 0 var(--space-4);
+    font-size: var(--text-2xl);
+  }
+
+  h3 {
+    margin: var(--space-10) 0 var(--space-3);
+    font-size: var(--text-xl);
+  }
+
+  h4 {
+    margin: var(--space-8) 0 var(--space-2);
+    font-size: var(--text-lg);
+  }
+
+  ul,
+  ol {
+    padding-left: var(--space-6);
+
+    ul,
+    ol {
+      margin-block: var(--space-2) 0;
+    }
+  }
+
+  li + li {
+    margin-top: var(--space-2);
+  }
+
+  li::marker {
+    color: var(--color-accent);
+  }
+
+  strong {
+    color: var(--color-text);
+    font-weight: 700;
+  }
+
+  blockquote {
+    padding-left: var(--space-5);
+    border-left: 3px solid var(--color-accent);
+    font-family: var(--font-quote);
+    font-style: italic;
+    font-size: var(--text-lg);
+    color: var(--color-text);
+  }
+
+  figure {
+    margin-inline: 0;
+
+    app-sanity-image {
+      overflow: hidden;
+      border-radius: var(--radius-md);
+    }
+  }
+
+  figcaption {
+    margin-top: var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+    text-align: center;
+  }
+
+  :not(pre) > code {
+    padding: 0.1em 0.35em;
+    font-size: 0.88em;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+  }
+
+  .code {
+    overflow: hidden;
+    background: var(--color-surface-deep);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+
+    figcaption {
+      margin: 0;
+      padding: var(--space-2) var(--space-4) 6px;
+      font-family: var(--font-pixel);
+      font-size: 1.15rem;
+      line-height: 1;
+      text-align: left;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--color-muted);
+      border-bottom: 1px dashed var(--color-border);
+    }
+
+    pre {
+      margin: 0;
+      padding: var(--space-4);
+      overflow-x: auto;
+      font-size: 0.86rem;
+      line-height: 1.65;
+    }
+
+    code {
+      color: #dfe6f2;
+      background: none;
+    }
+  }
+}
+
+// Syntax highlighting (highlight.js classes), tuned to the denim palette
+.hljs-comment,
+.hljs-quote {
+  color: #6f82a3;
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-doctag,
+.hljs-meta .hljs-keyword {
+  color: var(--color-arcane);
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-attribute {
+  color: #9fd8a4;
+}
+
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link {
+  color: #f0a372;
+}
+
+.hljs-title,
+.hljs-section,
+.hljs-title.function_ {
+  color: #8fc1ff;
+}
+
+.hljs-type,
+.hljs-built_in,
+.hljs-title.class_,
+.hljs-class .hljs-title {
+  color: var(--color-accent-hover);
+}
+
+.hljs-attr,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-property {
+  color: #9fd4f0;
+}
+
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class {
+  color: #f28b8b;
+}
+
+.hljs-meta {
+  color: #9fd4f0;
+}
+
+.hljs-deletion {
+  color: #ff7a85;
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 700;
+}

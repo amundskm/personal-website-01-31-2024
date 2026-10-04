@@ -1,0 +1,16 @@
+:host {
+  display: block;
+}
+
+img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background-size: cover;
+  background-position: center;
+  border-radius: inherit;
+
+  &.cover {
+    object-fit: cover;
+  }
+}
