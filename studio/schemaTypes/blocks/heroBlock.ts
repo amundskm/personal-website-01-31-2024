@@ -10,6 +10,11 @@ export const heroBlock = defineType({
   fields: [
     defineField({name: 'eyebrow', type: 'string', description: 'Small text above the heading.'}),
     defineField({name: 'heading', type: 'string', validation: (rule) => rule.required()}),
+    defineField({
+      name: 'tagline',
+      type: 'string',
+      description: 'A short punchline shown in gold directly under the heading.',
+    }),
     defineField({name: 'subheading', type: 'text', rows: 3}),
     defineField({name: 'image', type: 'accessibleImage'}),
     defineField({

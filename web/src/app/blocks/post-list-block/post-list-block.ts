@@ -26,7 +26,7 @@ import { PostCardComponent } from '../../shared/cards/post-card';
             }
           </div>
         } @else {
-          <p class="empty">No posts yet.</p>
+          <p class="empty">The first post is still brewing. Check back soon.</p>
         }
       </div>
     </section>

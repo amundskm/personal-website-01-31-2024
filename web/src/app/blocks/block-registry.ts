@@ -6,6 +6,7 @@ import { ImageBlock } from './image-block/image-block';
 import { PostListBlock } from './post-list-block/post-list-block';
 import { ProjectGridBlock } from './project-grid-block/project-grid-block';
 import { RichTextBlock } from './rich-text-block/rich-text-block';
+import { SkillsBlock } from './skills-block/skills-block';
 import { TwoColumnBlock } from './two-column-block/two-column-block';
 
 /**
@@ -22,5 +23,6 @@ export const BLOCK_REGISTRY: Record<PageSection['_type'], Type<unknown>> = {
   twoColumnBlock: TwoColumnBlock,
   projectGridBlock: ProjectGridBlock,
   postListBlock: PostListBlock,
+  skillsBlock: SkillsBlock,
   ctaBlock: CtaBlock,
 };

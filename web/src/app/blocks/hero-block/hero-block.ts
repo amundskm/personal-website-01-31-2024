@@ -20,6 +20,9 @@ import { WizardMascot } from '../../shared/wizard/wizard-mascot';
             <p class="eyebrow">{{ b.eyebrow }}</p>
           }
           <h1 class="hero__heading">{{ b.heading }}</h1>
+          @if (b.tagline) {
+            <p class="hero__tagline">{{ b.tagline }}</p>
+          }
           @if (b.subheading) {
             <p class="hero__subheading">{{ b.subheading }}</p>
           }
