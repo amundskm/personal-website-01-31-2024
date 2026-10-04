@@ -25,7 +25,7 @@ import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status
               }
             </div>
           } @else {
-            <p class="empty">No posts yet — check back soon.</p>
+            <p class="empty">The first post is still brewing in the cauldron. Check back soon.</p>
           }
         } @else if (posts.error()) {
           <app-load-error />

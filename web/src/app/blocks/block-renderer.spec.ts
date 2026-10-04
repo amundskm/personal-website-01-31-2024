@@ -100,6 +100,7 @@ describe('BLOCK_REGISTRY', () => {
       _type: 'heroBlock',
       _key: '1',
       heading: 'Hero heading',
+      tagline: 'Hero tagline',
       subheading: 'Sub',
       image,
       buttons: [link],
@@ -133,6 +134,12 @@ describe('BLOCK_REGISTRY', () => {
       items: [{ ...card, _id: 'b1', publishedAt: '2026-01-01T00:00:00Z', tags: ['a'] }],
     },
     {
+      _type: 'skillsBlock',
+      _key: '8',
+      heading: 'Skills',
+      groups: [{ _key: 'g', title: 'Making', skills: ['Welding', '3D Printing'] }],
+    },
+    {
       _type: 'ctaBlock',
       _key: '7',
       heading: 'CTA heading',
@@ -155,11 +162,14 @@ describe('BLOCK_REGISTRY', () => {
 
     for (const expected of [
       'Hero heading',
+      'Hero tagline',
       'Body text',
       'A caption',
       'Columns',
       'Card title',
       'Posts',
+      'Making',
+      'Welding',
       'CTA heading',
     ]) {
       expect(el.textContent).toContain(expected);

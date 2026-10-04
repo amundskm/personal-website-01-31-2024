@@ -33,6 +33,19 @@ export type CtaBlock = {
   theme?: 'light' | 'dark' | 'accent';
 };
 
+export type SkillsBlock = {
+  _type: 'skillsBlock';
+  heading?: string;
+  intro?: string;
+  groups?: Array<{
+    title?: string;
+    skills?: Array<string>;
+    _type: 'skillGroup';
+    _key: string;
+  }>;
+  theme?: 'light' | 'dark' | 'accent';
+};
+
 export type PostListBlock = {
   _type: 'postListBlock';
   heading?: string;
@@ -86,6 +99,7 @@ export type HeroBlock = {
   _type: 'heroBlock';
   eyebrow?: string;
   heading?: string;
+  tagline?: string;
   subheading?: string;
   image?: AccessibleImage;
   showMascot?: boolean;
@@ -281,6 +295,9 @@ export type Page = {
       } & PostListBlock)
     | ({
         _key: string;
+      } & SkillsBlock)
+    | ({
+        _key: string;
       } & CtaBlock)
   >;
   seo?: Seo;
@@ -411,6 +428,7 @@ export type AllSanitySchemaTypes =
   | Left
   | Right
   | CtaBlock
+  | SkillsBlock
   | PostListBlock
   | ProjectReference
   | ProjectGridBlock
@@ -568,6 +586,7 @@ export type PAGE_QUERY_RESULT = {
         _type: 'heroBlock';
         eyebrow?: string;
         heading?: string;
+        tagline?: string;
         subheading?: string;
         image: {
           _type: 'accessibleImage';
@@ -772,6 +791,19 @@ export type PAGE_QUERY_RESULT = {
             }
         > | null;
         width?: 'narrow' | 'wide';
+      }
+    | {
+        _key: string;
+        _type: 'skillsBlock';
+        heading?: string;
+        intro?: string;
+        groups?: Array<{
+          title?: string;
+          skills?: Array<string>;
+          _type: 'skillGroup';
+          _key: string;
+        }>;
+        theme?: 'accent' | 'dark' | 'light';
       }
     | {
         _key: string;

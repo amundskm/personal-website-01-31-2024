@@ -5,6 +5,7 @@ import {twoColumnBlock} from './twoColumnBlock'
 import {projectGridBlock} from './projectGridBlock'
 import {postListBlock} from './postListBlock'
 import {ctaBlock} from './ctaBlock'
+import {skillsBlock} from './skillsBlock'
 
 /**
  * Every block type a page can be built from.
@@ -18,5 +19,6 @@ export const blockTypes = [
   twoColumnBlock,
   projectGridBlock,
   postListBlock,
+  skillsBlock,
   ctaBlock,
 ]
