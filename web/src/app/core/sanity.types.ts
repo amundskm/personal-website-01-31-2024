@@ -77,6 +77,7 @@ export type ProjectGridBlock = {
 export type TwoColumnBlock = {
   _type: 'twoColumnBlock';
   heading?: string;
+  layout?: 'even' | 'aside';
   left?: Left;
   right?: Right;
   verticalAlign?: 'top' | 'center';
@@ -809,6 +810,7 @@ export type PAGE_QUERY_RESULT = {
         _key: string;
         _type: 'twoColumnBlock';
         heading?: string;
+        layout?: 'aside' | 'even';
         left: {
           content: Array<
             | {
