@@ -1,0 +1,33 @@
+// A stitched patch: the section theme sets the colors, the dashed gold thread frames it
+.cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  padding: clamp(2.5rem, 6vw, 4rem) clamp(1.25rem, 5vw, 3.5rem);
+  text-align: center;
+  border-radius: var(--radius-xl);
+  outline: 2px dashed rgb(224 173 76 / 0.5);
+  outline-offset: -10px;
+}
+
+.cta__heading {
+  margin: 0;
+  font-size: var(--text-3xl);
+}
+
+.cta__text {
+  max-width: 34rem;
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.button-row {
+  margin-top: var(--space-3);
+  justify-content: center;
+}
+
+// The default denim theme would blend into the page, so lift it onto the surface color
+.cta.theme-light {
+  background: var(--color-surface);
+}
