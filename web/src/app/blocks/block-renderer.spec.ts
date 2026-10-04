@@ -179,3 +179,36 @@ describe('BLOCK_REGISTRY', () => {
     expect(el.querySelector('img')?.getAttribute('srcset')).toContain('cdn.sanity.io');
   });
 });
+
+describe('TwoColumnBlock sidebar layout', () => {
+  it('puts the left column in the main track and the right column in an aside', async () => {
+    TestBed.configureTestingModule({ providers: [provideRouter([])] });
+    const fixture = TestBed.createComponent(BlockRenderer);
+    const text = (t: string) => [
+      {
+        _type: 'block',
+        _key: t,
+        style: 'normal',
+        markDefs: [],
+        children: [{ _type: 'span', _key: `${t}s`, text: t, marks: [] }],
+      },
+    ];
+    fixture.componentRef.setInput('sections', [
+      {
+        _type: 'twoColumnBlock',
+        _key: 'a',
+        heading: 'Hi there',
+        layout: 'aside',
+        left: { content: text('Main text'), image: null },
+        right: { content: text('Quick facts'), image: null },
+      },
+    ] as unknown as PageSection[]);
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+
+    expect(el.querySelector('.aside-main h2')?.textContent).toBe('Hi there');
+    expect(el.querySelector('.aside-main')?.textContent).toContain('Main text');
+    expect(el.querySelector('aside.aside-side')?.textContent).toContain('Quick facts');
+    expect(el.querySelector('.columns')).toBeNull();
+  });
+});
