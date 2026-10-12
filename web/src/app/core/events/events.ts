@@ -236,6 +236,35 @@ export function isInvited(
   return !event.invitees || event.createdBy === memberId || event.invitees.includes(memberId);
 }
 
+/**
+ * Whether `memberId` can add themselves: a visible event with an invite list
+ * that they aren't on yet (and that isn't cancelled).
+ */
+export function canJoin(
+  event: Pick<GroupEvent, 'invitees' | 'inviteesOnly' | 'createdBy' | 'status'>,
+  memberId: string,
+): boolean {
+  return (
+    !!event.invitees &&
+    !event.inviteesOnly &&
+    event.status !== 'cancelled' &&
+    !isInvited(event, memberId)
+  );
+}
+
+/** Whether `memberId` can take themselves off the invite list (never the organizer). */
+export function canLeave(
+  event: Pick<GroupEvent, 'invitees' | 'createdBy' | 'status'>,
+  memberId: string,
+): boolean {
+  return (
+    !!event.invitees &&
+    event.status !== 'cancelled' &&
+    event.createdBy !== memberId &&
+    event.invitees.includes(memberId)
+  );
+}
+
 /** Whether `memberId` can see the event at all. */
 export function canSee(
   event: Pick<GroupEvent, 'invitees' | 'inviteesOnly' | 'createdBy'>,

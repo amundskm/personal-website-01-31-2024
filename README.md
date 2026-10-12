@@ -199,6 +199,7 @@ For a sandbox, use `npx ampx sandbox secret set SANITY_PRIVATE_WRITE_TOKEN`.
   - With a list, the organizer chooses whether only invitees can see the event, or all members can see it while only invitees get emails, vote and RSVP.
   - Hidden events act as missing for everyone else (admins can still see them).
   - People added later get the invitation email. The calendar feed only includes events you're invited to.
+- **Joining:** on a visible event with an invite list, any member can **Join** (added to the list, organizer emailed under "Activity on my events"). Anyone on the list except the organizer can **Leave**, which removes their votes and RSVP. Hidden events can't be joined.
 - **Poll deadlines:** off by default. The organizer can set a "voting closes" date and time; with no time, it closes at 11:59 PM Central.
   - After the deadline, the server stops accepting votes.
   - The 15-minute job emails the organizer the results once (best date first, plus who didn't vote).

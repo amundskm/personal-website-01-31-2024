@@ -152,7 +152,7 @@ describe('EventPage', () => {
     expect(
       [...el.querySelectorAll('.ev-poll tbody th')].map((th) => textWithoutAvatars(th)),
     ).toEqual(['You', 'Bob']);
-    expect(el.textContent).toContain('2 people invited.');
+    expect(el.textContent).toContain('2 people invited · any member can join.');
 
     TestBed.resetTestingModule();
     el = await render(picked, 'zed');
@@ -177,5 +177,31 @@ describe('EventPage', () => {
     expect(el.querySelector<HTMLSelectElement>('.ev-poll tr.is-me select')!.disabled).toBe(true);
     // The organizer can still pick a date
     expect(el.querySelectorAll('.ev-poll tfoot button').length).toBe(2);
+  });
+
+  it('lets a member join a visible invite-list event, and an invitee leave it', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const open: GroupEvent = { ...poll, invitees: ['bob'], inviteesOnly: false };
+    let el = await render(open, 'zed');
+    const join = el.querySelector<HTMLButtonElement>('.ev-join')!;
+    expect(join.textContent).toContain('Join this event');
+    join.click();
+    await fixture.whenStable();
+    expect(sent).toEqual([{ path: '/events/evt1/join', method: 'POST', body: {} }]);
+
+    TestBed.resetTestingModule();
+    el = await render(open, 'bob');
+    expect(el.querySelector('.ev-join')).toBeNull();
+    el.querySelector<HTMLButtonElement>('.ev-leave')!.click();
+    await fixture.whenStable();
+    expect(sent).toEqual([{ path: '/events/evt1/leave', method: 'POST', body: {} }]);
+  });
+
+  it("offers no Join on hidden events, and the organizer can't leave", async () => {
+    let el = await render({ ...poll, invitees: ['bob'], inviteesOnly: true }, 'zed');
+    expect(el.querySelector('.ev-join')).toBeNull();
+    TestBed.resetTestingModule();
+    el = await render({ ...poll, invitees: ['bob'], inviteesOnly: false }, 'me');
+    expect(el.querySelector('.ev-leave')).toBeNull();
   });
 });
