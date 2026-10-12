@@ -16,16 +16,20 @@ import {
   type EventDetail,
   eventIcs,
   formatEventDate,
+  googleCalendarUrl,
   type GroupEvent,
   mapLink,
   reminderLabel,
   type Rsvp,
   scoreOptions,
+  shortDateLabel,
   type Vote,
 } from '../../core/events/events';
 import { SeoService } from '../../core/seo.service';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
 import { NotFound } from '../not-found/not-found';
+import { EventComments } from './event-comments';
+import { MemberAvatar } from './member-avatar';
 import { NamePrompt } from './name-prompt';
 
 const VOTES: { value: Vote; label: string; symbol: string }[] = [
@@ -43,7 +47,15 @@ const RSVPS: { value: Rsvp; label: string }[] = [
 /** One event: the date poll, or the confirmed details with RSVPs. */
 @Component({
   selector: 'app-event-page',
-  imports: [RouterLink, NamePrompt, NotFound, LoadingComponent, LoadErrorComponent],
+  imports: [
+    RouterLink,
+    NamePrompt,
+    EventComments,
+    MemberAvatar,
+    NotFound,
+    LoadingComponent,
+    LoadErrorComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (data.hasValue()) {
@@ -67,6 +79,25 @@ const RSVPS: { value: Rsvp; label: string }[] = [
                     (click)="cancel()"
                   >
                     Cancel event
+                  </button>
+                </div>
+              } @else if (manager() && e.status === 'cancelled') {
+                <div class="button-row">
+                  <button
+                    type="button"
+                    class="btn btn--primary"
+                    [disabled]="busy()"
+                    (click)="restore(true)"
+                  >
+                    Restore and email everyone
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn--secondary"
+                    [disabled]="busy()"
+                    (click)="restore(false)"
+                  >
+                    Restore quietly
                   </button>
                 </div>
               }
@@ -108,9 +139,23 @@ const RSVPS: { value: Rsvp; label: string }[] = [
                   <p class="ev-meta">Organized by {{ nameOf(e.createdBy) }}</p>
                   @if (e.status === 'confirmed') {
                     <p class="ev-meta">Email reminders: {{ remindersText(e) || 'none' }}</p>
-                    <button type="button" class="btn btn--secondary" (click)="downloadIcs(e)">
-                      Add to calendar
-                    </button>
+                    <div class="button-row">
+                      <a
+                        class="btn btn--secondary"
+                        [href]="google(e)"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Add to Google Calendar
+                      </a>
+                      <button type="button" class="btn btn--secondary" (click)="downloadIcs(e)">
+                        Apple / Outlook (.ics)
+                      </button>
+                    </div>
+                    <p class="ev-meta">
+                      Or <a routerLink="/profile" fragment="calendar">subscribe</a> to get every
+                      event automatically.
+                    </p>
                   }
                 </article>
 
@@ -133,8 +178,23 @@ const RSVPS: { value: Rsvp; label: string }[] = [
                       }
                     </div>
                     @for (group of attendance(); track group.label) {
-                      <h3 class="ev-subhead">{{ group.label }} ({{ group.names.length }})</h3>
-                      <p>{{ group.names.join(', ') || '—' }}</p>
+                      <h3 class="ev-subhead">{{ group.label }} ({{ group.people.length }})</h3>
+                      @if (group.people.length) {
+                        <ul class="ev-people">
+                          @for (person of group.people; track person.id) {
+                            <li>
+                              <app-member-avatar
+                                [name]="person.name"
+                                [url]="person.avatarUrl"
+                                [size]="28"
+                              />
+                              {{ person.id === d.me.id ? 'You' : person.name }}
+                            </li>
+                          }
+                        </ul>
+                      } @else {
+                        <p class="ev-meta">—</p>
+                      }
                     }
                   </article>
                 }
@@ -164,7 +224,16 @@ const RSVPS: { value: Rsvp; label: string }[] = [
                       <tbody>
                         @for (member of members(); track member.id) {
                           <tr [class.is-me]="member.id === d.me.id">
-                            <th scope="row">{{ member.id === d.me.id ? 'You' : member.name }}</th>
+                            <th scope="row">
+                              <span class="ev-person">
+                                <app-member-avatar
+                                  [name]="member.name"
+                                  [url]="member.avatarUrl"
+                                  [size]="26"
+                                />
+                                {{ member.id === d.me.id ? 'You' : member.name }}
+                              </span>
+                            </th>
                             @for (option of e.options; track option.id) {
                               <td [class.is-best]="best().includes(option.id)">
                                 @if (member.id === d.me.id) {
@@ -227,6 +296,8 @@ const RSVPS: { value: Rsvp; label: string }[] = [
                 </article>
               }
             </div>
+
+            <app-event-comments class="ev-discussion-wrap" [detail]="d" (changed)="data.reload()" />
           </div>
         </section>
       } @else {
@@ -291,24 +362,25 @@ export class EventPage {
   protected readonly attendance = computed(() => {
     const d = this.detail();
     if (!d) return [];
-    const names = (rsvp: Rsvp | null) =>
-      this.members()
-        .filter((m) => (d.event.rsvps[m.id] ?? null) === rsvp)
-        .map((m) => (m.id === d.me.id ? 'You' : m.name));
+    const people = (rsvp: Rsvp | null) =>
+      this.members().filter((m) => (d.event.rsvps[m.id] ?? null) === rsvp);
     return [
-      { label: 'Going', names: names('going') },
-      { label: 'Maybe', names: names('maybe') },
-      { label: "Can't make it", names: names('no') },
-      { label: 'No reply yet', names: names(null) },
+      { label: 'Going', people: people('going') },
+      { label: 'Maybe', people: people('maybe') },
+      { label: "Can't make it", people: people('no') },
+      { label: 'No reply yet', people: people(null) },
     ];
   });
 
   protected readonly when = (e: GroupEvent) => formatEventDate(e.confirmed!);
   protected readonly map = (e: GroupEvent) => mapLink(e.location!);
+  protected readonly google = (e: GroupEvent) => googleCalendarUrl(e, location.href);
   protected readonly optionLabel = (option: GroupEvent['options'][number]) =>
-    formatEventDate(option)
-      .replace(/, \d{4}/, '')
-      .replace(' · All day', '');
+    option.endDate
+      ? shortDateLabel(option)
+      : formatEventDate(option)
+          .replace(/, \d{4}/, '')
+          .replace(' · All day', '');
   protected readonly symbol = (vote: Vote) => VOTES.find((v) => v.value === vote)!.symbol;
   protected readonly remindersText = (e: GroupEvent) =>
     e.reminders.map((r) => reminderLabel(r.offsetMinutes)).join(', ');
@@ -364,6 +436,19 @@ export class EventPage {
       'POST',
       {},
       'Event cancelled. Everyone has been emailed.',
+    );
+  }
+
+  protected restore(notify: boolean): void {
+    const question = notify
+      ? 'Restore this event and email everyone that it is back on?'
+      : 'Restore this event without emailing anyone?';
+    if (!confirm(question)) return;
+    void this.run(
+      `/events/${this.id()}/restore`,
+      'POST',
+      { notify },
+      notify ? 'Event restored. Everyone has been emailed.' : 'Event restored quietly.',
     );
   }
 

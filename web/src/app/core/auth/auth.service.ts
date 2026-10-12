@@ -119,6 +119,24 @@ export class AuthService {
     return (await response.json()) as T;
   }
 
+  /** The members API's base URL, e.g. for links calendar apps fetch directly. */
+  async membersApiBase(): Promise<string> {
+    return (await this.requireBackend()).membersApiUrl;
+  }
+
+  /** POSTs to a members API route that needs no login (e.g. the unsubscribe link). */
+  async postPublicApi<T>(path: string, body: unknown): Promise<T> {
+    const { membersApiUrl } = await this.requireBackend();
+    const response = await fetch(`${membersApiUrl}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = (await response.json().catch(() => ({}))) as T & { message?: string };
+    if (!response.ok) throw new Error(data.message ?? `Members API responded ${response.status}`);
+    return data;
+  }
+
   private async handleStep(step: string): Promise<SignInStep> {
     switch (step) {
       case 'DONE':

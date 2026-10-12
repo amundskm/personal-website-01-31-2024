@@ -1,5 +1,5 @@
 import { renderEmail } from '../../../../amplify/shared/email-layout';
-import { eventEmail } from './event-email';
+import { commentEmail, eventEmail } from './event-email';
 import type { GroupEvent } from './events';
 
 // Made-up event only: the repository is public.
@@ -74,5 +74,46 @@ describe('renderEmail', () => {
     expect(html).toContain('{username}');
     expect(html).toContain('{####}');
     expect(html.length).toBeLessThan(20_000); // Cognito's invitation limit
+  });
+});
+
+describe('restored and comment emails', () => {
+  const links = {
+    preferences: 'https://neiaboiz.com/profile',
+    unsubscribe: 'https://neiaboiz.com/unsubscribe?m=x&t=y',
+  };
+
+  it('announces a restored event, with per-recipient links and an unsubscribe header URL', () => {
+    const email = eventEmail('restored', event, url, { links });
+    expect(email.subject).toBe('Back on: Lake <weekend> (Sat, Jun 1)');
+    expect(email.text).toContain('Lake <weekend> is back on. Here are the details.');
+    expect(email.text).toContain('Unsubscribe: https://neiaboiz.com/unsubscribe?m=x&t=y');
+    expect(email.html).toContain('Email preferences');
+    expect(email.unsubscribeUrl).toBe(links.unsubscribe);
+  });
+
+  it('reopens a restored poll with its dates', () => {
+    const email = eventEmail('restored', { ...event, status: 'polling', confirmed: null }, url);
+    expect(email.text).toContain('the date poll is open again');
+    expect(email.text).toContain('Date 2: Sat, Jun 8, 2030 · 6:00 PM');
+  });
+
+  it('quotes a comment for the organizer and a reply for the parent author', () => {
+    const suggestion = commentEmail(
+      'suggestion',
+      event,
+      { body: 'Start at 7?' },
+      'Bob',
+      url,
+      links,
+    );
+    expect(suggestion.subject).toBe('Bob suggested a change to Lake <weekend>');
+    expect(suggestion.text).toContain('Start at 7?');
+    expect(suggestion.text).toContain('because you organize this event');
+
+    const reply = commentEmail('reply', event, { body: 'Agreed' }, 'Carol', url);
+    expect(reply.subject).toBe('Carol replied to your comment on Lake <weekend>');
+    expect(reply.text).toContain('because you commented on this event');
+    expect(reply.unsubscribeUrl).toBeUndefined();
   });
 });

@@ -24,6 +24,13 @@ const poll: GroupEvent = {
   reminders: [{ offsetMinutes: 10080 }],
 };
 
+/** Visible text, without the initials drawn in avatar placeholders. */
+function textWithoutAvatars(el: Element): string {
+  const copy = el.cloneNode(true) as Element;
+  copy.querySelectorAll('app-member-avatar').forEach((a) => a.remove());
+  return copy.textContent!.trim();
+}
+
 describe('EventPage', () => {
   let sent: { path: string; method?: string; body?: unknown }[];
   let fixture: ComponentFixture<EventPage>;
@@ -38,6 +45,7 @@ describe('EventPage', () => {
         { id: 'zed', name: 'Zed' },
       ],
       event,
+      comments: [],
     };
     TestBed.configureTestingModule({
       providers: [
@@ -63,7 +71,7 @@ describe('EventPage', () => {
   it('shows the poll grid with you first, everyone else, and the best date', async () => {
     const el = await render(poll);
     const rows = [...el.querySelectorAll('.ev-poll tbody tr')].map((tr) =>
-      tr.querySelector('th')!.textContent!.trim(),
+      textWithoutAvatars(tr.querySelector('th')!),
     );
     expect(rows).toEqual(['You', 'Bob', 'Zed']);
     // a: yes + maybe = 3, b: no = 0
@@ -111,5 +119,30 @@ describe('EventPage', () => {
     going.click();
     await fixture.whenStable();
     expect(sent).toEqual([{ path: '/events/evt1/rsvp', method: 'PUT', body: { rsvp: 'going' } }]);
+  });
+
+  it('offers the organizer a quiet or announced restore on a cancelled event', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const el = await render({ ...poll, status: 'cancelled', cancelledFrom: 'polling' });
+    const button = (label: string) =>
+      [...el.querySelectorAll<HTMLButtonElement>('.ev-header button')].find(
+        (b) => b.textContent!.trim() === label,
+      )!;
+    expect(el.textContent).not.toContain('Cancel event');
+
+    button('Restore quietly').click();
+    await fixture.whenStable();
+    button('Restore and email everyone').click();
+    await fixture.whenStable();
+    expect(sent).toEqual([
+      { path: '/events/evt1/restore', method: 'POST', body: { notify: false } },
+      { path: '/events/evt1/restore', method: 'POST', body: { notify: true } },
+    ]);
+    confirmSpy.mockRestore();
+  });
+
+  it("doesn't let other members restore", async () => {
+    const el = await render({ ...poll, status: 'cancelled' }, 'bob');
+    expect(el.textContent).not.toContain('Restore');
   });
 });

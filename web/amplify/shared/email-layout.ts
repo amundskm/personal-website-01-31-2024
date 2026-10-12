@@ -47,6 +47,8 @@ export interface EmailContent {
   button?: { href: string; text: string };
   /** Why they got it, shown in the footer. */
   footer: string;
+  /** e.g. email preferences and unsubscribe, shown after the footer text. */
+  footerLinks?: { href: string; text: string }[];
 }
 
 /** A complete HTML email in the site's style. */
@@ -111,7 +113,14 @@ export function renderEmail(content: EmailContent): string {
 </td></tr>
 <tr><td style="padding:18px 8px 0;font-family:${SANS};font-size:14px;line-height:1.5;color:${C.muted}">
   ${escapeHtml(content.footer)}<br>
-  Sent by <a href="${SITE_URL}" style="color:${C.violet}">neiaboiz.com</a>
+  Sent by <a href="${SITE_URL}" style="color:${C.violet}">neiaboiz.com</a>${(
+    content.footerLinks ?? []
+  )
+    .map(
+      (l) =>
+        ` &middot; <a href="${escapeHtml(l.href)}" style="color:${C.violet}">${escapeHtml(l.text)}</a>`,
+    )
+    .join('')}
 </td></tr>
 </table>
 </td></tr>

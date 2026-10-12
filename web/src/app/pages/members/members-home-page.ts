@@ -36,6 +36,7 @@ import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status
           <div class="button-row family-links">
             @if (auth.hasAnyRole(['neia-boiz'])) {
               <a routerLink="/events" class="btn btn--primary">NEIA Boiz events</a>
+              <a routerLink="/profile" class="btn btn--secondary">Your profile</a>
             }
             @if (auth.hasAnyRole(['wife'])) {
               <a routerLink="/family/finances" class="btn btn--primary">Finances dashboard</a>

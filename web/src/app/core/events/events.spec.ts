@@ -1,9 +1,15 @@
 import {
+  calendarFeedIcs,
+  daysOf,
+  googleCalendarUrl,
+  lastDay,
+  shortDateLabel,
   bestOptionIds,
   canManage,
   dueReminders,
   eventIcs,
   formatEventDate,
+  restoredStatus,
   type GroupEvent,
   scoreOptions,
   skipPastReminders,
@@ -194,5 +200,110 @@ describe('eventIcs', () => {
     const ics = eventIcs(event({ confirmed: { date: '2030-12-31' } }), 'https://example.com', now);
     expect(ics).toContain('DTSTART;VALUE=DATE:20301231');
     expect(ics).toContain('DTEND;VALUE=DATE:20310101');
+  });
+});
+
+describe('restoredStatus', () => {
+  it('goes back to what the event was, else confirmed if it has a date', () => {
+    expect(restoredStatus({ cancelledFrom: 'polling', confirmed: null })).toBe('polling');
+    expect(restoredStatus({ cancelledFrom: 'confirmed', confirmed: { date: '2030-06-01' } })).toBe(
+      'confirmed',
+    );
+    expect(restoredStatus({ confirmed: { date: '2030-06-01' } })).toBe('confirmed');
+    expect(restoredStatus({ confirmed: null })).toBe('polling');
+  });
+});
+
+describe('date ranges', () => {
+  const weekend = { date: '2030-07-12', endDate: '2030-07-14' };
+
+  it('knows every day a range covers', () => {
+    expect(daysOf(weekend)).toEqual(['2030-07-12', '2030-07-13', '2030-07-14']);
+    expect(daysOf({ date: '2030-12-31', endDate: '2031-01-01' })).toEqual([
+      '2030-12-31',
+      '2031-01-01',
+    ]);
+    expect(daysOf({ date: '2030-07-12' })).toEqual(['2030-07-12']);
+    expect(lastDay(weekend)).toBe('2030-07-14');
+  });
+
+  it('formats ranges, all day or with times on the first and last day', () => {
+    expect(formatEventDate(weekend)).toBe('Fri, Jul 12 – Sun, Jul 14, 2030 · All days');
+    expect(formatEventDate({ ...weekend, startTime: '16:00', endTime: '11:00' })).toBe(
+      'Fri, Jul 12, 4:00 PM – Sun, Jul 14, 2030, 11:00 AM',
+    );
+    expect(formatEventDate({ date: '2030-12-30', endDate: '2031-01-02' })).toBe(
+      'Mon, Dec 30, 2030 – Thu, Jan 2, 2031 · All days',
+    );
+    expect(shortDateLabel(weekend)).toBe('Jul 12 – 14');
+    expect(shortDateLabel({ date: '2030-06-30', endDate: '2030-07-02' })).toBe('Jun 30 – Jul 2');
+    expect(shortDateLabel({ date: '2030-06-01' })).toBe('Sat, Jun 1');
+  });
+
+  it('validates ranges', () => {
+    const input = (endDate: string) => ({
+      title: 'Trip',
+      details: '',
+      location: null,
+      options: [{ date: '2030-07-12', endDate }],
+      confirmNow: true,
+      reminderOffsets: [],
+    });
+    expect(validateEventInput(input('2030-07-14'))).toBeNull();
+    expect(validateEventInput(input('2030-07-12'))).toMatch(/after/);
+    expect(validateEventInput(input('2030-07-10'))).toMatch(/after/);
+    expect(validateEventInput(input('2030-08-20'))).toMatch(/30 days/);
+    expect(validateEventInput(input('bad'))).toMatch(/end date/);
+  });
+
+  it('writes calendar files spanning the range', () => {
+    const now = new Date('2030-05-01T12:00:00Z');
+    const allDay = eventIcs(event({ confirmed: weekend }), 'https://example.com', now);
+    expect(allDay).toContain('DTSTART;VALUE=DATE:20300712');
+    expect(allDay).toContain('DTEND;VALUE=DATE:20300715');
+    const timed = eventIcs(
+      event({ confirmed: { ...weekend, startTime: '16:00', endTime: '11:00' } }),
+      'https://example.com',
+      now,
+    );
+    expect(timed).toContain('DTSTART:20300712T210000Z');
+    expect(timed).toContain('DTEND:20300714T160000Z');
+  });
+});
+
+describe('calendar links', () => {
+  it('builds a Google Calendar link for timed and all-day events', () => {
+    const timed = new URL(googleCalendarUrl(event(), 'https://example.com/events/evt1'));
+    expect(timed.origin + timed.pathname).toBe('https://calendar.google.com/calendar/render');
+    expect(timed.searchParams.get('action')).toBe('TEMPLATE');
+    expect(timed.searchParams.get('text')).toBe('Lake weekend');
+    expect(timed.searchParams.get('dates')).toBe('20300601T230000Z/20300602T020000Z');
+    expect(timed.searchParams.get('location')).toBe('The cabin, 1 Example Rd, Anytown');
+    expect(timed.searchParams.get('details')).toContain('https://example.com/events/evt1');
+
+    const allDay = new URL(
+      googleCalendarUrl(event({ confirmed: { date: '2030-07-12', endDate: '2030-07-14' } }), 'x'),
+    );
+    expect(allDay.searchParams.get('dates')).toBe('20300712/20300715');
+  });
+
+  it('builds a subscription feed of confirmed and cancelled events, without polls', () => {
+    const now = new Date('2030-05-01T12:00:00Z');
+    const feed = calendarFeedIcs(
+      [
+        event({ id: 'on' }),
+        event({ id: 'off', status: 'cancelled' }),
+        event({ id: 'poll', status: 'polling', confirmed: null }),
+      ],
+      'https://example.com',
+      now,
+    ).replace(/\r\n /g, '');
+    expect(feed.match(/BEGIN:VEVENT/g)).toHaveLength(2);
+    expect(feed).toContain('UID:on@neiaboiz.com');
+    expect(feed).toContain('UID:off@neiaboiz.com');
+    expect(feed).not.toContain('UID:poll@');
+    expect(feed).toContain('STATUS:CANCELLED');
+    expect(feed).toContain('X-WR-CALNAME:NEIA Boiz');
+    expect(feed).toContain('URL:https://example.com/events/on');
   });
 });

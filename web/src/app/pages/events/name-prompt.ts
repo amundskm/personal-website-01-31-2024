@@ -1,9 +1,11 @@
 import { ChangeDetectionStrategy, Component, inject, output, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 
 /** Asks a member for the display name shown in polls and RSVPs. */
 @Component({
   selector: 'app-name-prompt',
+  imports: [RouterLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <form class="ev-card name-prompt" (submit)="save($event)">
@@ -18,6 +20,9 @@ import { AuthService } from '../../core/auth/auth.service';
         />
       </label>
       <button type="submit" class="btn btn--primary" [disabled]="busy()">Save</button>
+      <p class="ev-meta">
+        You can add a photo and choose your emails on <a routerLink="/profile">your profile</a>.
+      </p>
       @if (error(); as e) {
         <p class="ev-error" role="alert">{{ e }}</p>
       }

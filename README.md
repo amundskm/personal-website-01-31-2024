@@ -191,6 +191,19 @@ For a sandbox, use `npx ampx sandbox secret set SANITY_PRIVATE_WRITE_TOKEN`.
   - An EventBridge rule runs the Lambda every 15 minutes to send due reminders.
   - Times are Central, and all-day events count reminders back from 9 am.
 - **Email design:** all emails, including the Cognito account invitation, use `web/amplify/shared/email-layout.ts`.
+- **Discussion:** every event has comments and suggestions with nested replies and emoji reactions.
+  - A top-level comment or suggestion emails the organizer, and a reply emails the parent comment's author.
+  - The organizer can accept or decline suggestions.
+  - Comments are their own table items, listed through the `byEvent` index.
+- **Date ranges:** any date option, in a poll or as a set date, can be one day or a range of up to 30 days. Times then apply to the first and last day. The calendar shows the event on every day of the range.
+- **Calendars:**
+  - Each confirmed event has "Add to Google Calendar" and an `.ics` download for Apple and Outlook.
+  - On `/profile`, members can subscribe to a private feed (`/calendar/{member}/{token}.ics`, no login, signed per member) that Google and Apple Calendar keep in sync. It includes confirmed events, with cancelled ones marked as cancelled.
+- **Restore:** the organizer or an admin can restore a cancelled event, either emailing everyone or quietly. It goes back to exactly what it was: a poll or a confirmed event.
+- **Profiles (`/profile`):**
+  - display name and photo; photos sit in a private S3 bucket, served by signed links;
+  - email preferences per type, plus "unsubscribe from all".
+  - Every email has a signed "Unsubscribe" link that works without logging in (`/unsubscribe`, backed by the API's only unauthenticated route), plus a `List-Unsubscribe` header.
 
 **Email setup (once):**
 1. Sending uses the existing `neiaboiz.com` SES identity in us-east-2. It's already verified with DKIM and a custom MAIL FROM domain (`admin.neiaboiz.com`) and isn't managed by this app.

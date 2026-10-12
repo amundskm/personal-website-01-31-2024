@@ -85,6 +85,16 @@ export const routes: Routes = [
       },
     ],
   },
+  {
+    path: 'profile',
+    canActivate: [requireRole('neia-boiz')],
+    loadComponent: () => import('./pages/events/profile-page').then((m) => m.ProfilePage),
+  },
+  // The signed "Unsubscribe" link in event emails; no login needed
+  {
+    path: 'unsubscribe',
+    loadComponent: () => import('./pages/events/unsubscribe-page').then((m) => m.UnsubscribePage),
+  },
   // Any other single-segment path is looked up as a CMS page (and 404s if missing)
   { path: ':slug', component: CmsPage },
   {
