@@ -1,13 +1,33 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import type { MonthSummary } from '../../core/finances/finances';
+import {
+  type MonthSummary,
+  monthWindow,
+  type PlanStage,
+  targetForMonth,
+} from '../../core/finances/finances';
 import { formatCents, formatDollars, formatMonth, formatShortMonth } from './format';
 
-const WIDTH = 560;
-const HEIGHT = 200;
-const PAD = { top: 16, right: 8, bottom: 28, left: 52 };
-const MAX_MONTHS = 12;
+const WIDTH = 720;
+const HEIGHT = 260;
+const PAD = { top: 24, right: 16, bottom: 40, left: 60 };
+const MONTHS = 12;
 
-/** Monthly spending as columns, each with its target marked; click a column to select that month. */
+interface Slot {
+  month: string;
+  /** Center of the month's column. */
+  x: number;
+  label: string;
+  /** Shown under the first month and every January. */
+  year: string | null;
+  summary: MonthSummary | null;
+  target: number | null;
+}
+
+/**
+ * Spending per statement month over a rolling 12-month window ending at the
+ * newest statement, against the plan's target. Months without a statement
+ * leave a gap in the line. Click a dot to select that month.
+ */
 @Component({
   selector: 'app-finance-trend',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -15,7 +35,7 @@ const MAX_MONTHS = 12;
     <svg
       [attr.viewBox]="'0 0 ' + width + ' ' + height"
       role="img"
-      [attr.aria-label]="'Monthly spending for the last ' + bars().length + ' statements'"
+      [attr.aria-label]="description()"
     >
       @for (tick of ticks(); track tick.y) {
         <line
@@ -25,54 +45,61 @@ const MAX_MONTHS = 12;
           [attr.y1]="tick.y"
           [attr.y2]="tick.y"
         />
-        <text class="axis" [attr.x]="pad.left - 8" [attr.y]="tick.y + 4" text-anchor="end">
+        <text class="axis" [attr.x]="pad.left - 10" [attr.y]="tick.y + 4" text-anchor="end">
           {{ tick.label }}
         </text>
       }
-      @for (bar of bars(); track bar.month) {
-        <g
-          class="bar"
-          [class.is-over]="bar.over"
-          [class.is-selected]="bar.month === selected()"
-          (click)="select.emit(bar.month)"
+      @for (slot of slots(); track slot.month) {
+        <text
+          class="axis"
+          [class.is-selected]="slot.month === selected()"
+          [attr.x]="slot.x"
+          [attr.y]="height - 22"
+          text-anchor="middle"
         >
-          <title>{{ bar.title }}</title>
-          <rect
-            class="hit"
-            [attr.x]="bar.x - bar.gap / 2"
-            [attr.y]="pad.top"
-            [attr.width]="bar.width + bar.gap"
-            [attr.height]="plotHeight"
-          />
-          <rect
-            class="fill"
-            [attr.x]="bar.x"
-            [attr.y]="bar.y"
-            [attr.width]="bar.width"
-            [attr.height]="bar.height"
-            rx="3"
-          />
-          @if (bar.targetY !== null) {
-            <line
-              class="target"
-              [attr.x1]="bar.x - 3"
-              [attr.x2]="bar.x + bar.width + 3"
-              [attr.y1]="bar.targetY"
-              [attr.y2]="bar.targetY"
-            />
-          }
+          {{ slot.label }}
+        </text>
+        @if (slot.year) {
           <text
-            class="axis"
-            [attr.x]="bar.x + bar.width / 2"
-            [attr.y]="height - 8"
+            class="axis axis--year"
+            [attr.x]="slot.x"
+            [attr.y]="height - 6"
             text-anchor="middle"
           >
-            {{ bar.label }}
+            {{ slot.year }}
           </text>
+        }
+      }
+
+      <path class="target" [attr.d]="targetPath()" />
+      <path class="line" [attr.d]="linePath()" />
+
+      @for (point of points(); track point.month) {
+        <g
+          class="point"
+          [class.is-over]="point.over"
+          [class.is-selected]="point.month === selected()"
+          (click)="select.emit(point.month)"
+        >
+          <title>{{ point.title }}</title>
+          <circle class="hit" [attr.cx]="point.x" [attr.cy]="point.y" r="16" />
+          <circle
+            class="dot"
+            [attr.cx]="point.x"
+            [attr.cy]="point.y"
+            [attr.r]="point.month === selected() ? 7 : 5"
+          />
+          @if (point.month === selected()) {
+            <text class="value" [attr.x]="point.x" [attr.y]="point.y - 14" text-anchor="middle">
+              {{ point.value }}
+            </text>
+          }
         </g>
       }
     </svg>
-    <p class="legend"><span class="legend__target"></span> Target</p>
+    <p class="legend">
+      <span class="legend__dot"></span> Spending <span class="legend__target"></span> Target
+    </p>
   `,
   styles: `
     :host {
@@ -86,70 +113,109 @@ const MAX_MONTHS = 12;
     .grid {
       stroke: var(--color-border);
       stroke-width: 1;
+      opacity: 0.6;
     }
     .axis {
       fill: var(--color-muted);
-      font-size: 12px;
+      font-size: 13px;
       font-family: var(--font-sans);
     }
-    .bar {
+    .axis--year {
+      font-size: 11px;
+    }
+    .axis.is-selected {
+      fill: var(--color-text);
+      font-weight: 700;
+    }
+    .target {
+      fill: none;
+      stroke: var(--color-text);
+      stroke-width: 2;
+      stroke-dasharray: 7 5;
+      opacity: 0.8;
+    }
+    .line {
+      fill: none;
+      stroke: var(--color-arcane);
+      stroke-width: 2.5;
+      stroke-linejoin: round;
+    }
+    .point {
       cursor: pointer;
     }
     .hit {
       fill: transparent;
     }
-    .fill {
+    .dot {
       fill: var(--color-arcane);
-      opacity: 0.55;
-      transition: opacity var(--transition);
+      stroke: var(--color-surface);
+      stroke-width: 2;
+      transition: r var(--transition);
     }
-    .is-over .fill {
+    .is-over .dot {
       fill: var(--color-accent);
     }
-    .bar:hover .fill,
-    .is-selected .fill {
-      opacity: 1;
-    }
-    .is-selected .axis {
-      fill: var(--color-text);
-      font-weight: 700;
-    }
-    .target {
+    .is-selected .dot {
       stroke: var(--color-text);
-      stroke-width: 2;
+    }
+    .value {
+      fill: var(--color-text);
+      font-size: 13px;
+      font-weight: 700;
+      font-family: var(--font-sans);
     }
     .legend {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
-      gap: var(--space-2);
+      gap: var(--space-2) var(--space-3);
       margin: var(--space-2) 0 0;
       font-size: var(--text-sm);
       color: var(--color-muted);
     }
+    .legend__dot {
+      width: 0.6rem;
+      height: 0.6rem;
+      border-radius: 50%;
+      background: var(--color-arcane);
+    }
     .legend__target {
-      width: 1rem;
-      height: 2px;
-      background: var(--color-text);
+      width: 1.2rem;
+      border-top: 2px dashed var(--color-text);
+      margin-left: var(--space-3);
     }
   `,
 })
 export class FinanceTrend {
   /** Newest first, as the API returns them. */
   readonly months = input.required<MonthSummary[]>();
+  readonly stages = input<PlanStage[]>([]);
   readonly selected = input<string | null>(null);
   readonly select = output<string>();
 
   protected readonly width = WIDTH;
   protected readonly height = HEIGHT;
   protected readonly pad = PAD;
-  protected readonly plotHeight = HEIGHT - PAD.top - PAD.bottom;
 
-  private readonly shown = computed(() => this.months().slice(0, MAX_MONTHS).reverse());
+  protected readonly slots = computed<Slot[]>(() => {
+    const newest = this.months()[0]?.month;
+    if (!newest) return [];
+    const byMonth = new Map(this.months().map((m) => [m.month, m]));
+    const slotWidth = (WIDTH - PAD.left - PAD.right) / MONTHS;
+    return monthWindow(newest, MONTHS).map((month, i) => ({
+      month,
+      x: PAD.left + slotWidth * (i + 0.5),
+      label: formatShortMonth(month),
+      year: i === 0 || month.endsWith('-01') ? month.slice(0, 4) : null,
+      summary: byMonth.get(month) ?? null,
+      target: targetForMonth(this.stages(), month),
+    }));
+  });
 
   private readonly maxDollars = computed(() => {
     const peak = Math.max(
       1,
-      ...this.shown().map((m) => Math.max(m.totalCents / 100, m.target ?? 0)),
+      ...this.slots().map((s) => Math.max((s.summary?.totalCents ?? 0) / 100, s.target ?? 0)),
     );
     const step = niceStep(peak / 4);
     return Math.ceil(peak / step) * step;
@@ -163,33 +229,66 @@ export class FinanceTrend {
     }));
   });
 
-  protected readonly bars = computed(() => {
-    const months = this.shown();
-    const slot = (WIDTH - PAD.left - PAD.right) / Math.max(months.length, 1);
-    const width = Math.min(48, slot * 0.6);
-    return months.map((m, i) => {
-      const dollars = Math.max(0, m.totalCents / 100);
-      const y = this.yFor(dollars);
-      const over = m.target !== null && dollars > m.target;
-      return {
-        month: m.month,
-        x: PAD.left + slot * i + (slot - width) / 2,
-        y,
-        width,
-        gap: slot - width,
-        height: this.yFor(0) - y,
-        targetY: m.target === null ? null : this.yFor(m.target),
-        over,
-        label: formatShortMonth(m.month),
-        title:
-          `${formatMonth(m.month)}: ${formatCents(m.totalCents)}` +
-          (m.target === null ? '' : ` of ${formatDollars(m.target)} target`),
-      };
-    });
+  protected readonly points = computed(() =>
+    this.slots()
+      .filter((s): s is Slot & { summary: MonthSummary } => !!s.summary)
+      .map((s) => {
+        const target = s.summary.target ?? s.target;
+        return {
+          month: s.month,
+          x: s.x,
+          y: this.yFor(Math.max(0, s.summary.totalCents / 100)),
+          over: target !== null && s.summary.totalCents > target * 100,
+          value: formatCents(s.summary.totalCents),
+          title:
+            `${formatMonth(s.month)}: ${formatCents(s.summary.totalCents)}` +
+            (target === null ? '' : ` of ${formatDollars(target)} target`),
+        };
+      }),
+  );
+
+  /** Connects consecutive months only; a month without a statement breaks the line. */
+  protected readonly linePath = computed(() => {
+    let path = '';
+    let previous: string | null = null;
+    const window = this.slots().map((s) => s.month);
+    for (const point of this.points()) {
+      const follows =
+        previous !== null && window.indexOf(point.month) === window.indexOf(previous) + 1;
+      path += `${follows ? 'L' : 'M'}${point.x},${point.y} `;
+      previous = point.month;
+    }
+    return path.trim();
+  });
+
+  /** A step line: flat across each month, stepping where a new stage starts. */
+  protected readonly targetPath = computed(() => {
+    const slots = this.slots();
+    const half = slots.length > 1 ? (slots[1].x - slots[0].x) / 2 : 0;
+    let path = '';
+    let previous: number | null = null;
+    for (const slot of slots) {
+      if (slot.target === null) {
+        previous = null;
+        continue;
+      }
+      const y = this.yFor(slot.target);
+      path += `${previous === null ? 'M' : 'L'}${slot.x - half},${y} L${slot.x + half},${y} `;
+      previous = slot.target;
+    }
+    return path.trim();
+  });
+
+  protected readonly description = computed(() => {
+    const points = this.points();
+    return (
+      `Spending per month for the last ${MONTHS} months against the target: ` +
+      points.map((p) => p.title).join('; ')
+    );
   });
 
   private yFor(dollars: number): number {
-    return PAD.top + this.plotHeight * (1 - dollars / this.maxDollars());
+    return PAD.top + (HEIGHT - PAD.top - PAD.bottom) * (1 - dollars / this.maxDollars());
   }
 }
 

@@ -94,13 +94,6 @@ interface CategoryRow {
                     Includes {{ cents(month.friendRepaidCents) }} repaid by friends.
                   </p>
                 }
-                @if (data.value()!.months.length > 1) {
-                  <app-finance-trend
-                    [months]="data.value()!.months"
-                    [selected]="month.month"
-                    (select)="selectedMonth.set($event)"
-                  />
-                }
               </article>
 
               <article class="fin-card">
@@ -138,6 +131,17 @@ interface CategoryRow {
                     </tr>
                   </tfoot>
                 </table>
+              </article>
+
+              <article class="fin-card fin-card--wide">
+                <h2>Spending per month</h2>
+                <p class="fin-card__meta">Last 12 months · click a dot to see that month</p>
+                <app-finance-trend
+                  [months]="data.value()!.months"
+                  [stages]="data.value()!.stages"
+                  [selected]="month.month"
+                  (select)="selectedMonth.set($event)"
+                />
               </article>
             </div>
           } @else {
