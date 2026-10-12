@@ -6,14 +6,22 @@ import {
   linkedSignal,
   OnInit,
   resource,
+  signal,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
-import { type FinancesDashboard, UNCATEGORIZED } from '../../core/finances/finances';
+import { type FinancesDashboard, type LineItem, UNCATEGORIZED } from '../../core/finances/finances';
 import { SeoService } from '../../core/seo.service';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
 import { FinanceTrend } from './finance-trend';
-import { formatCents, formatDollars, formatMonth, formatPeriod } from './format';
+import {
+  formatCents,
+  formatDay,
+  formatDollars,
+  formatExactCents,
+  formatMonth,
+  formatPeriod,
+} from './format';
 
 interface CategoryRow {
   key: string;
@@ -109,9 +117,17 @@ interface CategoryRow {
                   </thead>
                   <tbody>
                     @for (row of categoryRows(); track row.key) {
-                      <tr [class.is-over]="row.over">
+                      <tr [class.is-over]="row.over" [class.is-open]="expanded() === row.key">
                         <th scope="row">
-                          {{ row.name }}
+                          <button
+                            type="button"
+                            class="row-toggle"
+                            [attr.aria-expanded]="expanded() === row.key"
+                            [attr.aria-controls]="'items-' + row.key"
+                            (click)="toggle(row.key)"
+                          >
+                            <span class="chevron" aria-hidden="true"></span>{{ row.name }}
+                          </button>
                           <span class="bar" aria-hidden="true"
                             ><span [style.width.%]="row.percent"></span
                           ></span>
@@ -120,6 +136,44 @@ interface CategoryRow {
                         <td>{{ cents(row.spentCents) }}</td>
                         <td>{{ row.over ? '−' + cents(-row.leftCents) : cents(row.leftCents) }}</td>
                       </tr>
+                      @if (expanded() === row.key) {
+                        <tr class="line-items" [id]="'items-' + row.key">
+                          <td colspan="4">
+                            @if (lineItems.hasValue()) {
+                              @if (openItems().length) {
+                                <table class="items">
+                                  <caption class="visually-hidden">
+                                    {{
+                                      row.name
+                                    }}
+                                    line items
+                                  </caption>
+                                  <tbody>
+                                    @for (item of openItems(); track $index) {
+                                      <tr [class.is-credit]="item.amountCents < 0">
+                                        <td>{{ day(item.date) }}</td>
+                                        <th scope="row">
+                                          {{ item.description }}
+                                          @if (month.statements.length > 1) {
+                                            <span class="card">••{{ item.last4 }}</span>
+                                          }
+                                        </th>
+                                        <td>{{ exact(item.amountCents) }}</td>
+                                      </tr>
+                                    }
+                                  </tbody>
+                                </table>
+                              } @else {
+                                <p class="fin-card__meta">No spending here this month.</p>
+                              }
+                            } @else if (lineItems.error()) {
+                              <p class="fin-status is-over">The line items could not be loaded.</p>
+                            } @else {
+                              <p class="fin-card__meta" role="status">Loading…</p>
+                            }
+                          </td>
+                        </tr>
+                      }
                     }
                   </tbody>
                   <tfoot>
@@ -211,7 +265,29 @@ export class FinancesDashboardPage implements OnInit {
     this.categoryRows().reduce((sum, r) => sum + r.budgetCents, 0),
   );
 
+  /** The category whose line items are showing. Stays open when switching months. */
+  protected readonly expanded = signal<string | null>(null);
+
+  /** The open month's line items, fetched once a category is opened. */
+  protected readonly lineItems = resource({
+    params: () => (this.expanded() ? this.current()?.month : undefined),
+    loader: ({ params: month }) =>
+      this.auth.fetchMembersApi<LineItem[]>(`/finances/months/${month}`),
+  });
+
+  protected readonly openItems = computed(() => {
+    const key = this.expanded();
+    const items = this.lineItems.hasValue() ? (this.lineItems.value() ?? []) : [];
+    return items.filter((item) => item.categoryKey === key);
+  });
+
+  protected toggle(key: string): void {
+    this.expanded.update((open) => (open === key ? null : key));
+  }
+
   protected readonly cents = formatCents;
+  protected readonly exact = formatExactCents;
+  protected readonly day = formatDay;
   protected readonly dollars = formatDollars;
   protected readonly period = formatPeriod;
   protected readonly monthLabel = (month: string) => `${formatMonth(month)} statement`;

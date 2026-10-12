@@ -90,6 +90,18 @@ export interface FinancesDashboard {
   months: MonthSummary[];
 }
 
+/** One line under a category on the dashboard. */
+export interface LineItem {
+  date: string;
+  description: string;
+  amountCents: number;
+  /** `repayment` = money friends paid back, entered on upload (negative). */
+  kind: Exclude<TransactionKind, 'payment'> | 'repayment';
+  /** A plan category key, or `UNCATEGORIZED`. */
+  categoryKey: string;
+  last4: string;
+}
+
 /** What the admin-only upload page receives. */
 export interface FinancesAdminData {
   plan: SpendingPlan;
@@ -160,10 +172,55 @@ export function targetForMonth(stages: PlanStage[], month: string): number | nul
   return stageFor(stages, `${month}-31`)?.monthlyTarget ?? null;
 }
 
+/** Maps a stored category key to a current plan category, or `UNCATEGORIZED`. */
+function categoryKeyFor(plan: SpendingPlan): (key: string | null) => string {
+  const known = new Set(plan.categories.map((c) => c.key));
+  return (key) => (key && known.has(key) ? key : UNCATEGORIZED);
+}
+
+/**
+ * Every line that counts toward a statement month (`YYYY-MM` of the closing
+ * date), oldest first: purchases, fees, refunds and friend repayments. They
+ * add up to that month's `MonthSummary` totals, per category.
+ */
+export function monthLineItems(
+  statements: Statement[],
+  plan: SpendingPlan,
+  month: string,
+): LineItem[] {
+  const keyFor = categoryKeyFor(plan);
+  const items: LineItem[] = [];
+  for (const statement of statements) {
+    if (statement.closingDate.slice(0, 7) !== month) continue;
+    for (const tx of statement.transactions) {
+      if (tx.kind === 'payment') continue;
+      items.push({
+        date: tx.date,
+        description: tx.description,
+        amountCents: tx.amountCents,
+        kind: tx.kind,
+        categoryKey: keyFor(tx.categoryKey),
+        last4: statement.last4,
+      });
+    }
+    const repaid = statement.friendRepayment?.amountCents ?? 0;
+    if (repaid) {
+      items.push({
+        date: statement.closingDate,
+        description: 'Repaid by friends',
+        amountCents: -repaid,
+        kind: 'repayment',
+        categoryKey: keyFor(statement.friendRepayment.categoryKey),
+        last4: statement.last4,
+      });
+    }
+  }
+  return items.sort((a, b) => a.date.localeCompare(b.date));
+}
+
 /** Groups statements by closing month and totals them, newest month first. */
 export function summarizeMonths(statements: Statement[], plan: SpendingPlan): MonthSummary[] {
-  const known = new Set(plan.categories.map((c) => c.key));
-  const keyFor = (key: string | null) => (key && known.has(key) ? key : UNCATEGORIZED);
+  const keyFor = categoryKeyFor(plan);
   const months = new Map<string, MonthSummary>();
 
   for (const statement of statements) {

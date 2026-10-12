@@ -64,6 +64,12 @@ httpApi.addRoutes({
   authorizer,
 });
 httpApi.addRoutes({
+  path: '/finances/months/{month}',
+  methods: [HttpMethod.GET],
+  integration: financesIntegration,
+  authorizer,
+});
+httpApi.addRoutes({
   path: '/finances/admin',
   methods: [HttpMethod.GET],
   integration: financesIntegration,
