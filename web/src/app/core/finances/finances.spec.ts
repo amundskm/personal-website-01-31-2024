@@ -65,13 +65,10 @@ describe('stageFor', () => {
 });
 
 describe('summarizeMonths', () => {
-  it('totals spending by the month statements start, excluding payments and netting refunds and repayments', () => {
+  it('totals spending by closing month, excluding payments and netting refunds and repayments', () => {
     const months = summarizeMonths(
       [
         statement({
-          id: '1234_2026-02-04',
-          openingDate: '2026-01-05',
-          closingDate: '2026-02-04',
           transactions: [
             {
               date: '2025-12-06',
@@ -105,10 +102,9 @@ describe('summarizeMonths', () => {
           friendRepayment: { amountCents: 4000, categoryKey: 'food' },
         }),
         statement({
-          id: '9999_2026-02-09',
+          id: '9999_2026-01-20',
           last4: '9999',
-          openingDate: '2026-01-10',
-          closingDate: '2026-02-09',
+          closingDate: '2026-01-20',
           transactions: [
             {
               date: '2026-01-10',
@@ -120,9 +116,8 @@ describe('summarizeMonths', () => {
           ],
         }),
         statement({
-          id: '1234_2026-04-04',
-          openingDate: '2026-03-05',
-          closingDate: '2026-04-04',
+          id: '1234_2026-03-04',
+          closingDate: '2026-03-04',
           transactions: [
             {
               date: '2026-02-10',
@@ -238,7 +233,6 @@ describe('monthLineItems', () => {
       }),
       statement({
         id: '1234_2026-02-04',
-        openingDate: '2026-01-05',
         closingDate: '2026-02-04',
         transactions: [
           {
@@ -252,7 +246,7 @@ describe('monthLineItems', () => {
       }),
     ];
 
-    const items = monthLineItems(statements, plan, '2025-12');
+    const items = monthLineItems(statements, plan, '2026-01');
     expect(items.map((i) => [i.date, i.description, i.amountCents, i.kind, i.categoryKey])).toEqual(
       [
         ['2025-12-06', 'A', 30000, 'purchase', 'food'],
@@ -278,9 +272,9 @@ describe('monthLineItems', () => {
 });
 
 describe('statementMonth', () => {
-  it('is the month the billing period starts in', () => {
-    expect(statementMonth({ openingDate: '2026-09-05' })).toBe('2026-09');
-    expect(statementMonth({ openingDate: '2025-12-05' })).toBe('2025-12');
+  it('is the closing month, for the whole statement', () => {
+    expect(statementMonth({ closingDate: '2026-10-04' })).toBe('2026-10');
+    expect(statementMonth({ closingDate: '2026-01-04' })).toBe('2026-01');
   });
 });
 

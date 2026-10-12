@@ -91,7 +91,7 @@ export interface StatementInfo {
 
 /** One statement month, as the dashboard shows it. */
 export interface MonthSummary {
-  /** `YYYY-MM` the statements start in (see `statementMonth`). */
+  /** `YYYY-MM` the statements close in (see `statementMonth`). */
   month: string;
   statements: StatementInfo[];
   /** Spending after refunds and friend repayments. */
@@ -155,11 +155,11 @@ export const UNCATEGORIZED = '_uncategorized';
 export const statementId = (last4: string, closingDate: string) => `${last4}_${closingDate}`;
 
 /**
- * The month a statement counts toward: the month its billing period starts in,
- * where nearly all of its spending happened (Sep 5 – Oct 4 is September).
+ * The month a whole statement counts toward: its closing month (a Jan 2 – Feb 1
+ * statement is February). Statements are never split by day.
  */
-export const statementMonth = (statement: Pick<Statement, 'openingDate'>) =>
-  statement.openingDate.slice(0, 7);
+export const statementMonth = (statement: Pick<Statement, 'closingDate'>) =>
+  statement.closingDate.slice(0, 7);
 
 export const countsAsSpending = (tx: Pick<StatementTransaction, 'kind'>) => tx.kind !== 'payment';
 
