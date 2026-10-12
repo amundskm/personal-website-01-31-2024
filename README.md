@@ -203,6 +203,10 @@ For a sandbox, use `npx ampx sandbox secret set SANITY_PRIVATE_WRITE_TOKEN`.
   - After the deadline, the server stops accepting votes.
   - The 15-minute job emails the organizer the results once (best date first, plus who didn't vote).
   - Changing the deadline reopens voting.
+- **Attachments:** each event can have one cover image (resized in the browser, shown on the event and as a list thumbnail) and up to 5 files of up to 10 MB each.
+  - The organizer or an admin adds and removes them on the event page.
+  - Browsers upload straight to the private bucket with a signed PUT link into `pending/` (unfinished uploads expire after a day). The Lambda checks the size, then moves the file under `events/` and attaches it.
+  - Downloads use signed links, given only to people who can see the event.
 - **Date ranges:** any date option, in a poll or as a set date, can be one day or a range of up to 30 days. Times then apply to the first and last day. The calendar shows the event on every day of the range.
 - **Calendars:**
   - Each confirmed event has "Add to Google Calendar" and an `.ics` download for Apple and Outlook.

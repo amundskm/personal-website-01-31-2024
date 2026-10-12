@@ -36,6 +36,7 @@ import {
 import { SeoService } from '../../core/seo.service';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
 import { NotFound } from '../not-found/not-found';
+import { EventAttachments } from './event-attachments';
 import { EventComments } from './event-comments';
 import { MemberAvatar } from '../../shared/member-avatar/member-avatar';
 import { NamePrompt } from './name-prompt';
@@ -62,6 +63,7 @@ const RSVPS: { value: Rsvp; label: string }[] = [
     RouterLink,
     NamePrompt,
     EventComments,
+    EventAttachments,
     MemberAvatar,
     NotFound,
     LoadingComponent,
@@ -130,6 +132,11 @@ const RSVPS: { value: Rsvp; label: string }[] = [
             <div class="ev-grid">
               <div class="ev-stack">
                 <article class="ev-card">
+                  @if (e.image?.url) {
+                    <a class="ev-cover" [href]="e.image!.url" target="_blank" rel="noopener">
+                      <img [src]="e.image!.url" [alt]="'Image for ' + e.title" loading="lazy" />
+                    </a>
+                  }
                   @if (e.confirmed && e.status !== 'polling') {
                     <p class="ev-when">{{ when(e) }}</p>
                   }
@@ -149,6 +156,9 @@ const RSVPS: { value: Rsvp; label: string }[] = [
                   }
                   <p class="ev-meta">Organized by {{ nameOf(e.createdBy) }}</p>
                   <p class="ev-meta">{{ inviteSummary() }}</p>
+                  @if (e.status !== 'cancelled') {
+                    <app-event-attachments [detail]="d" (changed)="replaceEvent($event)" />
+                  }
                   @if (e.status === 'confirmed') {
                     <p class="ev-meta">Email reminders: {{ remindersText(e) || 'none' }}</p>
                     <div class="button-row">
@@ -561,6 +571,12 @@ export class EventPage {
       {},
       'Event cancelled. Everyone has been emailed.',
     );
+  }
+
+  /** Swaps in the event an attachment change returned, keeping everything else. */
+  protected replaceEvent(event: GroupEvent): void {
+    const current = this.data.hasValue() ? this.data.value() : null;
+    if (current) this.data.set({ ...current, event });
   }
 
   protected restore(notify: boolean): void {

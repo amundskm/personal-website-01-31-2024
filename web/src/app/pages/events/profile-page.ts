@@ -187,7 +187,7 @@ import { MemberAvatar } from '../../shared/member-avatar/member-avatar';
       </div>
     </section>
   `,
-  styleUrl: './events.scss',
+  styleUrls: ['./events.scss', './profile-page.scss'],
 })
 export class ProfilePage implements OnInit {
   private readonly auth = inject(AuthService);

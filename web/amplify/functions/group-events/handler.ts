@@ -20,8 +20,10 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { SendEmailCommand, SESv2Client } from '@aws-sdk/client-sesv2';
 import {
+  CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -55,6 +57,8 @@ import {
   wantsEmail,
 } from '../../../src/app/core/events/profile';
 import {
+  type Attachment,
+  type AttachmentKind,
   bestOptionIds,
   calendarFeedIcs,
   canManage,
@@ -77,6 +81,11 @@ import {
   type Rsvp,
   skipPastReminders,
   validateEventInput,
+  MAX_FILE_BYTES,
+  MAX_FILES,
+  MAX_IMAGE_BYTES,
+  safeFileName,
+  validateUploadRequest,
   type Vote,
   type VoteDeadline,
   voteDeadline,
@@ -130,6 +139,9 @@ interface MemberRecord extends Member {
  *   DELETE /events/{id}/comments/{cid}           → author, organizer or admin
  *   PUT  /events/{id}/comments/{cid}/reactions   → { reaction, on } mine
  *   PUT  /events/{id}/comments/{cid}/status      → { status } suggestions; organizer or admin
+ *   POST /events/{id}/attachments               → UploadRequest → { id, name, uploadUrl } (organizer/admin)
+ *   PUT  /events/{id}/attachments/{aid}         → { kind, name, type } after the upload: attaches it
+ *   DELETE /events/{id}/attachments/{aid}       → removes the cover image or a file
  *
  *   GET  /events/profile        → my profile (name, email, photo, email preferences)
  *   PUT  /events/profile        → { name?, prefs? }
@@ -188,6 +200,11 @@ async function route(event: ApiEvent, caller: Caller): Promise<Result> {
     return cancel(caller, id);
   } else if (action === 'restore' && method === 'POST') {
     return restore(caller, id, body);
+  } else if (action === 'attachments') {
+    const attachmentId = commentId;
+    if (!attachmentId && method === 'POST') return requestUpload(caller, id, body);
+    if (attachmentId && method === 'PUT') return confirmUpload(caller, id, attachmentId, body);
+    if (attachmentId && method === 'DELETE') return removeAttachment(caller, id, attachmentId);
   } else if (action === 'comments') {
     if (!commentId && method === 'POST') return addComment(caller, id, body);
     if (commentId && !commentAction && method === 'DELETE')
@@ -209,9 +226,12 @@ async function overview(caller: Caller) {
   return {
     me: await me(caller, members),
     members: await publicMembers(members),
-    events: events
-      .filter((e) => canSee(e, caller.id, caller.isAdmin))
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    events: await Promise.all(
+      events
+        .filter((e) => canSee(e, caller.id, caller.isAdmin))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .map(withFileLinks),
+    ),
   };
 }
 
@@ -225,7 +245,7 @@ async function detail(caller: Caller, id: string): Promise<Result> {
   return json(200, {
     me: await me(caller, members),
     members: await publicMembers(members),
-    event,
+    event: await withFileLinks(event),
     comments,
   });
 }
@@ -526,6 +546,198 @@ async function restore(caller: Caller, id: string, body: Record<string, unknown>
   const restored: GroupEvent = { ...event, status, reminders, cancelledFrom: null };
   if (body['notify'] === true) await notify('restored', restored, caller);
   return json(200, restored);
+}
+
+// ---------------------------------------------------------------------------
+// Attachments: a cover image and up to MAX_FILES files, in the private bucket.
+// The browser uploads straight to S3 with a signed link (to pending/, which a
+// lifecycle rule empties after a day), then confirms; only then is the file
+// moved under events/ and attached.
+// ---------------------------------------------------------------------------
+
+const pendingKey = (eventId: string, id: string, name: string) =>
+  `pending/${eventId}/${id}/${name}`;
+const fileKey = (eventId: string, id: string, name: string) => `events/${eventId}/${id}/${name}`;
+
+async function requestUpload(
+  caller: Caller,
+  eventId: string,
+  body: Record<string, unknown>,
+): Promise<Result> {
+  const event = await loadVisibleEvent(caller, eventId);
+  if (!event) return json(404, { message: 'Event not found' });
+  if (!canManage(event, caller.id, caller.isAdmin)) return forbidden();
+  const error = validateUploadRequest(body, event.attachments?.length ?? 0);
+  if (error) return json(400, { message: error });
+
+  const id = newId();
+  const name = safeFileName(String(body['name']));
+  const uploadUrl = await getSignedUrl(
+    s3,
+    new PutObjectCommand({
+      Bucket: AVATAR_BUCKET,
+      Key: pendingKey(eventId, id, name),
+      ContentType: String(body['type']),
+      ContentLength: Number(body['size']),
+    }),
+    { expiresIn: 15 * 60 },
+  );
+  return json(200, { id, name, uploadUrl });
+}
+
+async function confirmUpload(
+  caller: Caller,
+  eventId: string,
+  id: string,
+  body: Record<string, unknown>,
+): Promise<Result> {
+  const event = await loadVisibleEvent(caller, eventId);
+  if (!event) return json(404, { message: 'Event not found' });
+  if (!canManage(event, caller.id, caller.isAdmin)) return forbidden();
+  const kind = body['kind'] as AttachmentKind;
+  if ((kind !== 'image' && kind !== 'file') || !/^[a-f0-9]{12}$/.test(id)) {
+    return json(400, { message: 'Invalid upload' });
+  }
+  const name = safeFileName(String(body['name'] ?? ''));
+  const from = pendingKey(eventId, id, name);
+
+  let head;
+  try {
+    head = await s3.send(new HeadObjectCommand({ Bucket: AVATAR_BUCKET, Key: from }));
+  } catch {
+    return json(404, { message: "The upload didn't finish. Please try again." });
+  }
+  const size = head.ContentLength ?? 0;
+  const type = head.ContentType ?? 'application/octet-stream';
+  if (size > (kind === 'image' ? MAX_IMAGE_BYTES : MAX_FILE_BYTES)) {
+    await deleteObject(from);
+    return json(400, { message: 'That file is too large.' });
+  }
+
+  const key = fileKey(eventId, id, name);
+  await s3.send(
+    new CopyObjectCommand({
+      Bucket: AVATAR_BUCKET,
+      CopySource: `${AVATAR_BUCKET}/${encodeURIComponent(from).replace(/%2F/g, '/')}`,
+      Key: key,
+    }),
+  );
+  await deleteObject(from);
+  const attachment: Attachment = {
+    id,
+    name,
+    size,
+    type,
+    key,
+    uploadedAt: new Date().toISOString(),
+  };
+
+  try {
+    if (kind === 'image') {
+      await db.send(
+        new UpdateCommand({
+          TableName: TABLE,
+          Key: { pk: eventKey(eventId) },
+          UpdateExpression: 'SET image = :image',
+          ConditionExpression: 'attribute_exists(pk)',
+          ExpressionAttributeValues: { ':image': attachment },
+        }),
+      );
+      if (event.image?.key) await deleteObject(event.image.key); // replaced
+    } else {
+      await db.send(
+        new UpdateCommand({
+          TableName: TABLE,
+          Key: { pk: eventKey(eventId) },
+          UpdateExpression:
+            'SET attachments = list_append(if_not_exists(attachments, :empty), :file)',
+          // Re-checked here so two uploads at once can't pass the limit
+          ConditionExpression: 'attribute_not_exists(attachments) OR size(attachments) < :max',
+          ExpressionAttributeValues: { ':empty': [], ':file': [attachment], ':max': MAX_FILES },
+        }),
+      );
+    }
+  } catch (error) {
+    await deleteObject(key);
+    if ((error as { name?: string }).name === 'ConditionalCheckFailedException') {
+      return json(409, { message: `An event can have up to ${MAX_FILES} files.` });
+    }
+    throw error;
+  }
+  const updated = await loadEvent(eventId);
+  return json(200, updated ? await withFileLinks(updated) : null);
+}
+
+async function removeAttachment(caller: Caller, eventId: string, id: string): Promise<Result> {
+  const event = await loadVisibleEvent(caller, eventId);
+  if (!event) return json(404, { message: 'Event not found' });
+  if (!canManage(event, caller.id, caller.isAdmin)) return forbidden();
+
+  let removed: Attachment | undefined;
+  if (event.image?.id === id) {
+    removed = event.image;
+    await db.send(
+      new UpdateCommand({
+        TableName: TABLE,
+        Key: { pk: eventKey(eventId) },
+        UpdateExpression: 'REMOVE image',
+      }),
+    );
+  } else {
+    const files = event.attachments ?? [];
+    removed = files.find((f) => f.id === id);
+    if (!removed) return json(404, { message: 'Attachment not found' });
+    await db.send(
+      new UpdateCommand({
+        TableName: TABLE,
+        Key: { pk: eventKey(eventId) },
+        UpdateExpression: 'SET attachments = :files',
+        ExpressionAttributeValues: { ':files': files.filter((f) => f.id !== id) },
+      }),
+    );
+  }
+  if (removed?.key) await deleteObject(removed.key);
+  const updated = await loadEvent(eventId);
+  return json(200, updated ? await withFileLinks(updated) : null);
+}
+
+async function deleteObject(key: string): Promise<void> {
+  await s3.send(new DeleteObjectCommand({ Bucket: AVATAR_BUCKET, Key: key })).catch((error) => {
+    console.warn('Could not delete', key, String(error));
+  });
+}
+
+/** The event with signed links: the image to show inline, files to download by name. */
+async function withFileLinks(event: GroupEvent): Promise<GroupEvent> {
+  const link = async (file: Attachment, download: boolean) => ({
+    ...file,
+    url: await signedFileUrl(file.key!, download ? file.name : null),
+  });
+  return {
+    ...event,
+    image: event.image?.key ? await link(event.image, false) : (event.image ?? null),
+    attachments: await Promise.all(
+      (event.attachments ?? []).filter((f) => f.key).map((f) => link(f, true)),
+    ),
+  };
+}
+
+/** Like avatarUrl, but files download under their own name. */
+async function signedFileUrl(key: string, downloadName: string | null): Promise<string> {
+  const window = 6 * 60 * 60 * 1000;
+  return getSignedUrl(
+    s3,
+    new GetObjectCommand({
+      Bucket: AVATAR_BUCKET,
+      Key: key,
+      ...(downloadName
+        ? {
+            ResponseContentDisposition: `attachment; filename="${downloadName.replace(/"/g, '')}"`,
+          }
+        : {}),
+    }),
+    { expiresIn: 12 * 60 * 60, signingDate: new Date(Math.floor(Date.now() / window) * window) },
+  );
 }
 
 async function profile(caller: Caller) {
