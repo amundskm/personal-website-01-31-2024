@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
   inject,
   input,
@@ -15,6 +16,7 @@ import {
   canManage,
   type EventDetail,
   eventIcs,
+  formatDeadline,
   formatEventDate,
   googleCalendarUrl,
   type GroupEvent,
@@ -27,6 +29,8 @@ import {
   scoreOptions,
   shortDateLabel,
   type Vote,
+  voteDeadline,
+  votingOpen,
 } from '../../core/events/events';
 import { SeoService } from '../../core/seo.service';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
@@ -222,8 +226,22 @@ const RSVPS: { value: Rsvp; label: string }[] = [
                       You're not invited to this one, but you can follow along.
                     </p>
                   }
+                  @if (e.voteBy) {
+                    <p class="ev-deadline" [class.is-closed]="!open()">
+                      @if (open()) {
+                        Voting closes {{ deadline(e) }} ({{ deadlineIn() }})
+                      } @else {
+                        Voting closed {{ deadline(e) }}.
+                        @if (manager()) {
+                          Pick a date below, or edit the event to extend the deadline.
+                        }
+                      }
+                    </p>
+                  }
                   <p class="ev-meta">
-                    Mark each date. Your answers save as you go.
+                    @if (open()) {
+                      Mark each date. Your answers save as you go.
+                    }
                     @if (manager()) {
                       Confirm a date when everyone has voted.
                     }
@@ -258,7 +276,7 @@ const RSVPS: { value: Rsvp; label: string }[] = [
                                 @if (member.id === d.me.id) {
                                   <select
                                     [attr.aria-label]="'Your answer for ' + optionLabel(option)"
-                                    [disabled]="busy()"
+                                    [disabled]="busy() || !open()"
                                     (change)="setVote(option.id, $any($event.target).value)"
                                   >
                                     <option value="" [selected]="!myVotes()[option.id]">—</option>
@@ -412,6 +430,24 @@ export class EventPage {
 
   protected readonly when = (e: GroupEvent) => formatEventDate(e.confirmed!);
   protected readonly map = (e: GroupEvent) => mapLink(e.location!);
+  protected readonly deadline = (e: GroupEvent) => formatDeadline(e.voteBy!);
+
+  /** Whether voting is open (re-checked every minute so the page closes on time). */
+  private readonly now = signal(new Date());
+  protected readonly open = computed(() => {
+    const d = this.detail();
+    return !!d && votingOpen(d.event, this.now());
+  });
+  /** "in 3 days", "in 5 hours", "in 20 minutes". */
+  protected readonly deadlineIn = computed(() => {
+    const d = this.detail();
+    const end = d ? voteDeadline(d.event) : null;
+    if (!end) return '';
+    const minutes = Math.max(0, Math.round((end.getTime() - this.now().getTime()) / 60_000));
+    if (minutes >= 48 * 60) return `in ${Math.round(minutes / (24 * 60))} days`;
+    if (minutes >= 60) return `in ${Math.round(minutes / 60)} hours`;
+    return `in ${minutes} minutes`;
+  });
   protected readonly google = (e: GroupEvent) => googleCalendarUrl(e, location.href);
   protected readonly optionLabel = (option: GroupEvent['options'][number]) =>
     option.endDate
@@ -428,6 +464,8 @@ export class EventPage {
     ];
 
   constructor() {
+    const tick = setInterval(() => this.now.set(new Date()), 60_000);
+    inject(DestroyRef).onDestroy(() => clearInterval(tick));
     effect(() => {
       const d = this.detail();
       if (d) {

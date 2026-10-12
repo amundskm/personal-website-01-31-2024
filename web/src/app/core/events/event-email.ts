@@ -1,6 +1,7 @@
 import { type EmailDetail, renderEmail, SITE_URL } from '../../../../amplify/shared/email-layout';
 import {
   type EventDate,
+  formatDeadline,
   formatEventDate,
   type GroupEvent,
   mapLink,
@@ -109,6 +110,7 @@ export function eventEmail(
     event.options.forEach((option, i) =>
       details.push({ label: `Date ${i + 1}`, value: formatEventDate(option) }),
     );
+    if (event.voteBy) details.push({ label: 'Vote by', value: formatDeadline(event.voteBy) });
   } else if (when && kind !== 'cancelled') {
     details.push({ label: 'When', value: formatEventDate(when) });
   }
@@ -222,4 +224,75 @@ export function commentEmail(
     ...footerText(c.footer, links),
   ].join('\n');
   return { subject: c.subject, text, html, unsubscribeUrl: links?.unsubscribe };
+}
+
+/** One proposed date's results, for the "voting closed" email. */
+export interface PollResult {
+  label: string;
+  yes: number;
+  maybe: number;
+  no: number;
+  best: boolean;
+}
+
+/** Tells the organizer their poll's voting has closed, with the results. */
+export function pollClosedEmail(
+  event: Pick<GroupEvent, 'title'>,
+  results: PollResult[],
+  voted: number,
+  invited: number,
+  notVoted: string[],
+  url: string,
+  links?: RecipientLinks,
+): Email {
+  const sorted = [...results].sort((a, b) => b.yes * 2 + b.maybe - (a.yes * 2 + a.maybe));
+  const best = sorted.filter((r) => r.best);
+  const intro =
+    `Voting has closed. ${voted} of ${invited} invited ${invited === 1 ? 'person' : 'people'} voted. ` +
+    (best.length === 1
+      ? `${best[0].label} works best.`
+      : best.length > 1
+        ? 'A few dates are tied for best.'
+        : 'Nobody voted yes or maybe.') +
+    ' Pick the date to let everyone know.';
+  const details: EmailDetail[] = sorted.map((r) => ({
+    label: r.best ? 'Best' : 'Date',
+    value: `${r.label}: ${r.yes} yes, ${r.maybe} maybe, ${r.no} no`,
+  }));
+  const note = notVoted.length ? `Didn't vote: ${notVoted.join(', ')}` : undefined;
+  const footer = "You're getting this because you organize this event on neiaboiz.com.";
+  const html = renderEmail({
+    eyebrow: 'Voting closed',
+    heading: event.title,
+    preheader: intro,
+    paragraphs: [intro],
+    details,
+    note,
+    button: { href: url, text: 'Pick the date' },
+    siteLink: EVENTS_LINK,
+    footer,
+    footerLinks: footerLinks(links),
+  });
+  const text = [
+    'NEIA BOIZ · neiaboiz.com',
+    '',
+    'VOTING CLOSED',
+    event.title,
+    '',
+    intro,
+    '',
+    ...details.map((d) => `${d.label}: ${d.value}`),
+    ...(note ? ['', note] : []),
+    '',
+    `Pick the date: ${url}`,
+    `${EVENTS_LINK.label} ${EVENTS_LINK.href}`,
+    '',
+    ...footerText(footer, links),
+  ].join('\n');
+  return {
+    subject: `Voting closed: ${event.title}`,
+    text,
+    html,
+    unsubscribeUrl: links?.unsubscribe,
+  };
 }

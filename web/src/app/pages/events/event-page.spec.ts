@@ -160,4 +160,22 @@ describe('EventPage', () => {
     expect(el.querySelector('.ev-poll tbody tr.is-me')).toBeNull();
     expect(el.querySelectorAll('.ev-poll select').length).toBe(0);
   });
+
+  it('shows the deadline, and stops voting once it has passed', async () => {
+    let el = await render({ ...poll, voteBy: { date: '2999-01-01', time: '17:00' } });
+    expect(el.querySelector('.ev-deadline')!.textContent).toContain(
+      'Voting closes Tue, Jan 1, 5:00 PM',
+    );
+    expect(el.querySelector<HTMLSelectElement>('.ev-poll tr.is-me select')!.disabled).toBe(false);
+
+    TestBed.resetTestingModule();
+    el = await render({ ...poll, voteBy: { date: '2000-01-01' } });
+    expect(el.querySelector('.ev-deadline')!.textContent).toContain(
+      'Voting closed Sat, Jan 1, 11:59 PM',
+    );
+    expect(el.querySelector('.ev-deadline')!.textContent).toContain('extend the deadline');
+    expect(el.querySelector<HTMLSelectElement>('.ev-poll tr.is-me select')!.disabled).toBe(true);
+    // The organizer can still pick a date
+    expect(el.querySelectorAll('.ev-poll tfoot button').length).toBe(2);
+  });
 });

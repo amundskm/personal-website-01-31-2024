@@ -25,6 +25,7 @@ import {
 import { SeoService } from '../../core/seo.service';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
 import { MemberAvatar } from '../../shared/member-avatar/member-avatar';
+import { localIsoDate } from './event-calendar';
 
 interface DateRow {
   key: number;
@@ -185,6 +186,42 @@ interface DateRow {
                 Times are Central. Add a last day for a weekend or trip. Leave the start time empty
                 for all day.
               </p>
+              @if (mode() === 'poll') {
+                <label class="ev-check ev-deadline-toggle">
+                  <input
+                    type="checkbox"
+                    [checked]="hasDeadline()"
+                    (change)="hasDeadline.set($any($event.target).checked)"
+                  />
+                  Set a voting deadline
+                </label>
+                @if (hasDeadline()) {
+                  <div class="ev-row">
+                    <label class="ev-field">
+                      <span>Voting closes</span>
+                      <input
+                        type="date"
+                        required
+                        [value]="deadlineDate()"
+                        [min]="today"
+                        (input)="deadlineDate.set($any($event.target).value)"
+                      />
+                    </label>
+                    <label class="ev-field">
+                      <span>At <small>(optional, else end of day)</small></span>
+                      <input
+                        type="time"
+                        [value]="deadlineTime()"
+                        (input)="deadlineTime.set($any($event.target).value)"
+                      />
+                    </label>
+                  </div>
+                  <p class="ev-meta">
+                    After this, voting stops and you'll get an email with the results so you can
+                    pick the date.
+                  </p>
+                }
+              }
             </fieldset>
 
             <fieldset class="ev-fieldset">
@@ -319,6 +356,12 @@ export class EventFormPage implements OnInit {
   protected readonly inviteMode = signal<'everyone' | 'selected'>('everyone');
   protected readonly selected = signal<Set<string>>(new Set());
   protected readonly inviteesOnly = signal(true);
+
+  /** Polls: an optional voting deadline (off unless the organizer turns it on). */
+  protected readonly hasDeadline = signal(false);
+  protected readonly deadlineDate = signal('');
+  protected readonly deadlineTime = signal('');
+  protected readonly today = localIsoDate(new Date());
 
   private readonly people = computed(() => {
     const source = this.id()
@@ -455,13 +498,19 @@ export class EventFormPage implements OnInit {
       reminderOffsets: this.reminders(),
       invitees: this.inviteMode() === 'selected' ? [...this.selected()] : null,
       inviteesOnly: this.inviteMode() === 'selected' && this.inviteesOnly(),
+      voteBy:
+        this.mode() === 'poll' && this.hasDeadline() && this.deadlineDate()
+          ? { date: this.deadlineDate(), time: this.deadlineTime() || null }
+          : null,
     };
     const problem =
-      input.invitees && !input.invitees.length
-        ? 'Pick at least one person to invite, or choose everyone.'
-        : this.mode() === 'poll' && input.options.length < 2
-          ? 'Add at least two dates to poll on, or choose "The date is set".'
-          : validateEventInput(input);
+      this.mode() === 'poll' && this.hasDeadline() && !this.deadlineDate()
+        ? 'Pick the day voting closes, or turn off the deadline.'
+        : input.invitees && !input.invitees.length
+          ? 'Pick at least one person to invite, or choose everyone.'
+          : this.mode() === 'poll' && input.options.length < 2
+            ? 'Add at least two dates to poll on, or choose "The date is set".'
+            : validateEventInput(input);
     if (problem) {
       this.error.set(problem);
       return;
@@ -485,6 +534,9 @@ export class EventFormPage implements OnInit {
 
   private fill(event: GroupEvent): void {
     this.inviteMode.set(event.invitees ? 'selected' : 'everyone');
+    this.hasDeadline.set(!!event.voteBy);
+    this.deadlineDate.set(event.voteBy?.date ?? '');
+    this.deadlineTime.set(event.voteBy?.time ?? '');
     this.selected.set(new Set(event.invitees ?? []));
     this.inviteesOnly.set(event.invitees ? !!event.inviteesOnly : true);
     this.title.set(event.title);

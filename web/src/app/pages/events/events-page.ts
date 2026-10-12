@@ -10,12 +10,14 @@ import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import {
   type EventsOverview,
+  formatDeadline,
   formatEventDate,
   type GroupEvent,
   invitedMembers,
   isInvited,
   lastDay,
   type Rsvp,
+  votingOpen,
 } from '../../core/events/events';
 import { SeoService } from '../../core/seo.service';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
@@ -62,10 +64,16 @@ const RSVP_LABELS: Record<Rsvp, string> = { going: 'Going', maybe: 'Maybe', no: 
                       {{ event.options.length }} dates proposed · {{ voterCount(event) }} of
                       {{ invitedCount(event, d.members) }} voted
                     </span>
+                    @if (event.voteBy) {
+                      <span class="ev-meta">
+                        {{ isOpen(event) ? 'Voting closes' : 'Voting closed' }}
+                        {{ deadline(event) }}
+                      </span>
+                    }
                     @if (event.invitees) {
                       <span class="ev-invite-badge">Invite only</span>
                     }
-                    @if (invited(event) && !hasVoted(event)) {
+                    @if (invited(event) && isOpen(event) && !hasVoted(event)) {
                       <span class="ev-badge">You haven't voted</span>
                     }
                   </a>
@@ -167,6 +175,8 @@ export class EventsPage implements OnInit {
   protected readonly voterCount = (event: GroupEvent) => Object.keys(event.votes).length;
   protected readonly hasVoted = (event: GroupEvent) => !!event.votes[this.myId() ?? ''];
   protected readonly invited = (event: GroupEvent) => isInvited(event, this.myId() ?? '');
+  protected readonly isOpen = (event: GroupEvent) => votingOpen(event);
+  protected readonly deadline = (event: GroupEvent) => formatDeadline(event.voteBy!);
   protected readonly invitedCount = (event: GroupEvent, members: { id: string }[]) =>
     invitedMembers(event, members).length;
   protected readonly myRsvp = (event: GroupEvent) => event.rsvps[this.myId() ?? ''] ?? null;

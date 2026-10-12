@@ -43,7 +43,7 @@ export const PREF_LABELS: { key: keyof EmailPrefs; label: string; hint: string }
   {
     key: 'organizer',
     label: 'Activity on my events',
-    hint: 'Comments and suggestions on events you organize',
+    hint: 'Comments, suggestions and closed polls on events you organize',
   },
   { key: 'replies', label: 'Replies to my comments', hint: 'When someone replies to you' },
 ];
@@ -58,6 +58,7 @@ export type NotificationKind =
   | 'reminder'
   | 'comment'
   | 'suggestion'
+  | 'pollClosed'
   | 'reply';
 
 export function prefFor(kind: NotificationKind): keyof EmailPrefs {
@@ -73,6 +74,7 @@ export function prefFor(kind: NotificationKind): keyof EmailPrefs {
       return 'reminders';
     case 'comment':
     case 'suggestion':
+    case 'pollClosed':
       return 'organizer';
     case 'reply':
       return 'replies';
