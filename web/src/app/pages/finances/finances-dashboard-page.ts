@@ -47,7 +47,7 @@ interface CategoryRow {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="section">
-      <div class="container">
+      <div class="container fin-page">
         <header class="page-header fin-header">
           <div>
             <p class="eyebrow">Family</p>
@@ -72,43 +72,56 @@ interface CategoryRow {
             </label>
 
             <div class="fin-grid">
-              <article class="fin-card">
-                <h2>This month vs target</h2>
-                <p class="fin-card__meta">
-                  @for (s of month.statements; track s.id) {
-                    <span>Card ••{{ s.last4 }} · {{ period(s.openingDate, s.closingDate) }}</span>
-                  }
-                </p>
-                <p class="fin-total">
-                  <strong [class.is-over]="isOver()">{{ cents(month.totalCents) }}</strong>
-                  @if (month.target !== null) {
-                    <span>of {{ dollars(month.target) }} target</span>
-                  }
-                </p>
-                @if (month.target !== null) {
-                  <div
-                    class="meter"
-                    role="meter"
-                    aria-label="Spending against target"
-                    [attr.aria-valuenow]="month.totalCents / 100"
-                    aria-valuemin="0"
-                    [attr.aria-valuemax]="month.target"
-                  >
-                    <span [class.is-over]="isOver()" [style.width.%]="targetPercent()"></span>
-                  </div>
-                  <p class="fin-status" [class.is-over]="isOver()">
-                    {{ targetStatus() }}
-                    @if (month.stageLabel) {
-                      <span class="fin-card__meta">· Stage: {{ month.stageLabel }}</span>
+              <div class="fin-stack">
+                <article class="fin-card">
+                  <h2>This month vs target</h2>
+                  <p class="fin-card__meta">
+                    @for (s of month.statements; track s.id) {
+                      <span>Card ••{{ s.last4 }} · {{ period(s.openingDate, s.closingDate) }}</span>
                     }
                   </p>
-                }
-                @if (month.friendRepaidCents) {
-                  <p class="fin-card__meta">
-                    Includes {{ cents(month.friendRepaidCents) }} repaid by friends.
+                  <p class="fin-total">
+                    <strong [class.is-over]="isOver()">{{ cents(month.totalCents) }}</strong>
+                    @if (month.target !== null) {
+                      <span>of {{ dollars(month.target) }} target</span>
+                    }
                   </p>
-                }
-              </article>
+                  @if (month.target !== null) {
+                    <div
+                      class="meter"
+                      role="meter"
+                      aria-label="Spending against target"
+                      [attr.aria-valuenow]="month.totalCents / 100"
+                      aria-valuemin="0"
+                      [attr.aria-valuemax]="month.target"
+                    >
+                      <span [class.is-over]="isOver()" [style.width.%]="targetPercent()"></span>
+                    </div>
+                    <p class="fin-status" [class.is-over]="isOver()">
+                      {{ targetStatus() }}
+                      @if (month.stageLabel) {
+                        <span class="fin-card__meta">· Stage: {{ month.stageLabel }}</span>
+                      }
+                    </p>
+                  }
+                  @if (month.friendRepaidCents) {
+                    <p class="fin-card__meta">
+                      Includes {{ cents(month.friendRepaidCents) }} repaid by friends.
+                    </p>
+                  }
+                </article>
+
+                <article class="fin-card">
+                  <h2>Spending per month</h2>
+                  <p class="fin-card__meta">Last 12 months · click a dot to see that month</p>
+                  <app-finance-trend
+                    [months]="data.value()!.months"
+                    [stages]="data.value()!.stages"
+                    [selected]="month.month"
+                    (select)="selectedMonth.set($event)"
+                  />
+                </article>
+              </div>
 
               <article class="fin-card">
                 <h2>Budget by category</h2>
@@ -220,17 +233,6 @@ interface CategoryRow {
                     </tr>
                   </tfoot>
                 </table>
-              </article>
-
-              <article class="fin-card fin-card--wide">
-                <h2>Spending per month</h2>
-                <p class="fin-card__meta">Last 12 months · click a dot to see that month</p>
-                <app-finance-trend
-                  [months]="data.value()!.months"
-                  [stages]="data.value()!.stages"
-                  [selected]="month.month"
-                  (select)="selectedMonth.set($event)"
-                />
               </article>
             </div>
           } @else {
