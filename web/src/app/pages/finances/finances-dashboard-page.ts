@@ -10,7 +10,13 @@ import {
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
-import { type FinancesDashboard, type LineItem, UNCATEGORIZED } from '../../core/finances/finances';
+import {
+  type FinancesDashboard,
+  type LineItem,
+  lineRef,
+  type Recategorize,
+  UNCATEGORIZED,
+} from '../../core/finances/finances';
 import { SeoService } from '../../core/seo.service';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
 import { FinanceTrend } from './finance-trend';
@@ -149,7 +155,7 @@ interface CategoryRow {
                                     line items
                                   </caption>
                                   <tbody>
-                                    @for (item of openItems(); track $index) {
+                                    @for (item of openItems(); track itemId(item)) {
                                       <tr [class.is-credit]="item.amountCents < 0">
                                         <td>{{ day(item.date) }}</td>
                                         <th scope="row">
@@ -159,12 +165,41 @@ interface CategoryRow {
                                           }
                                         </th>
                                         <td>{{ exact(item.amountCents) }}</td>
+                                        <td>
+                                          <select
+                                            class="move"
+                                            [attr.aria-label]="'Category for ' + item.description"
+                                            [disabled]="moving() !== null"
+                                            (change)="move(item, $any($event.target).value)"
+                                          >
+                                            @for (c of data.value()!.categories; track c.key) {
+                                              <option
+                                                [value]="c.key"
+                                                [selected]="c.key === item.categoryKey"
+                                              >
+                                                {{ c.name }}
+                                              </option>
+                                            }
+                                            @if (item.categoryKey === uncategorized) {
+                                              <option value="" selected disabled>Choose…</option>
+                                            }
+                                          </select>
+                                        </td>
                                       </tr>
                                     }
                                   </tbody>
                                 </table>
                               } @else {
                                 <p class="fin-card__meta">No spending here this month.</p>
+                              }
+                              @if (moveMessage(); as m) {
+                                <p
+                                  class="fin-card__meta move-message"
+                                  [class.is-over]="m.error"
+                                  [attr.role]="m.error ? 'alert' : 'status'"
+                                >
+                                  {{ m.text }}
+                                </p>
                               }
                             } @else if (lineItems.error()) {
                               <p class="fin-status is-over">The line items could not be loaded.</p>
@@ -224,7 +259,12 @@ export class FinancesDashboardPage implements OnInit {
   );
 
   /** Defaults to the newest month whenever the data (re)loads. */
-  protected readonly selectedMonth = linkedSignal(() => this.months()[0]?.month ?? null);
+  protected readonly selectedMonth = linkedSignal<string[], string | null>({
+    source: () => this.months().map((m) => m.month),
+    // Keep the chosen month across reloads (e.g. after moving a line); else the newest
+    computation: (months, previous) =>
+      previous?.value && months.includes(previous.value) ? previous.value : (months[0] ?? null),
+  });
 
   protected readonly current = computed(
     () => this.months().find((m) => m.month === this.selectedMonth()) ?? this.months()[0] ?? null,
@@ -283,6 +323,44 @@ export class FinancesDashboardPage implements OnInit {
 
   protected toggle(key: string): void {
     this.expanded.update((open) => (open === key ? null : key));
+    this.moveMessage.set(null);
+  }
+
+  /** The line being moved to another category, if any. */
+  protected readonly moving = signal<string | null>(null);
+  protected readonly moveMessage = signal<{ text: string; error: boolean } | null>(null);
+  protected readonly uncategorized = UNCATEGORIZED;
+  protected readonly itemId = (item: LineItem) => `${item.statementId}/${lineRef(item)}`;
+
+  /** Moves one line item to another category, then refreshes the totals and lines. */
+  protected async move(item: LineItem, categoryKey: string): Promise<void> {
+    if (!categoryKey || categoryKey === item.categoryKey) return;
+    const body: Recategorize = {
+      categoryKey,
+      description: item.description,
+      amountCents: item.amountCents,
+    };
+    const name = this.data.value()?.categories.find((c) => c.key === categoryKey)?.name;
+    this.moving.set(this.itemId(item));
+    this.moveMessage.set(null);
+    try {
+      await this.auth.fetchMembersApi(
+        `/finances/statements/${encodeURIComponent(item.statementId)}/lines/${lineRef(item)}`,
+        { method: 'PATCH', body },
+      );
+      this.moveMessage.set({ text: `Moved ${item.description} to ${name}.`, error: false });
+      this.data.reload();
+      this.lineItems.reload();
+    } catch (error) {
+      this.moveMessage.set({
+        text: error instanceof Error ? error.message : 'That line could not be moved.',
+        error: true,
+      });
+      // Put the dropdown back to the line's real category
+      this.lineItems.reload();
+    } finally {
+      this.moving.set(null);
+    }
   }
 
   protected readonly cents = formatCents;

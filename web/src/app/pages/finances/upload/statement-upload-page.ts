@@ -96,7 +96,10 @@ interface DraftRow {
                   {{ money(d.paymentsAndCreditsCents) }}
                 </li>
                 @if (replaces()) {
-                  <li>This replaces the statement already uploaded for this period.</li>
+                  <li>
+                    This replaces the statement already uploaded for this period, including any
+                    categories changed on the dashboard.
+                  </li>
                 }
               </ul>
 

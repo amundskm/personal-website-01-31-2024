@@ -100,7 +100,22 @@ export interface LineItem {
   /** A plan category key, or `UNCATEGORIZED`. */
   categoryKey: string;
   last4: string;
+  statementId: string;
+  /** Position in the statement's transactions; null for the friend repayment. */
+  index: number | null;
 }
+
+/** Moves one line to another category (body of PATCH /finances/statements/{id}/lines/{line}). */
+export interface Recategorize {
+  categoryKey: string;
+  /** Must still match the stored line, so a re-uploaded statement isn't edited by mistake. */
+  description: string;
+  amountCents: number;
+}
+
+/** The `{line}` path segment for a line item. */
+export const lineRef = (item: Pick<LineItem, 'index'>) =>
+  item.index === null ? 'repayment' : String(item.index);
 
 /** What the admin-only upload page receives. */
 export interface FinancesAdminData {
@@ -192,8 +207,8 @@ export function monthLineItems(
   const items: LineItem[] = [];
   for (const statement of statements) {
     if (statement.closingDate.slice(0, 7) !== month) continue;
-    for (const tx of statement.transactions) {
-      if (tx.kind === 'payment') continue;
+    statement.transactions.forEach((tx, index) => {
+      if (tx.kind === 'payment') return;
       items.push({
         date: tx.date,
         description: tx.description,
@@ -201,8 +216,10 @@ export function monthLineItems(
         kind: tx.kind,
         categoryKey: keyFor(tx.categoryKey),
         last4: statement.last4,
+        statementId: statement.id,
+        index,
       });
-    }
+    });
     const repaid = statement.friendRepayment?.amountCents ?? 0;
     if (repaid) {
       items.push({
@@ -212,6 +229,8 @@ export function monthLineItems(
         kind: 'repayment',
         categoryKey: keyFor(statement.friendRepayment.categoryKey),
         last4: statement.last4,
+        statementId: statement.id,
+        index: null,
       });
     }
   }
