@@ -97,7 +97,7 @@ export class AuthService {
    */
   async fetchMembersApi<T>(
     path: string,
-    options: { method?: 'GET' | 'PUT' | 'DELETE'; body?: unknown } = {},
+    options: { method?: 'GET' | 'PUT' | 'PATCH' | 'DELETE'; body?: unknown } = {},
   ): Promise<T | null> {
     const { auth, membersApiUrl } = await this.requireBackend();
     const { tokens } = await auth.fetchAuthSession();

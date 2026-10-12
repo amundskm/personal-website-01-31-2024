@@ -8,6 +8,7 @@ import {
   DynamoDBDocumentClient,
   PutCommand,
   ScanCommand,
+  UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { env } from '$amplify/env/finances';
 import { hasAnyRole } from '../../../src/app/core/auth/roles';
@@ -17,6 +18,7 @@ import {
   type LineItem,
   monthLineItems,
   type NewRule,
+  type Recategorize,
   type PlanCategory,
   type SpendingPlan,
   type Statement,
@@ -38,6 +40,8 @@ const sanity = sanityClient(env.SANITY_DATASET, env.SANITY_WRITE_TOKEN);
 /**
  * GET    /finances                  (wife)  → plan budgets + monthly totals, no transactions or rules
  * GET    /finances/months/{month}  (wife)  → that month's line items (no payments), oldest first
+ * PATCH  /finances/statements/{id}/lines/{line}  (wife) → move one line to another category;
+ *        {line} is a transaction index or "repayment"; body Recategorize
  * GET    /finances/admin            (admin) → full plan incl. merchant patterns + uploaded statements
  * PUT    /finances/statements/{id}  (admin) → save (or replace) a statement; body { statement, newRules }
  * DELETE /finances/statements/{id}  (admin) → remove an uploaded statement
@@ -62,6 +66,19 @@ export const handler = async (
         const month = event.pathParameters?.['month'] ?? '';
         if (!/^\d{4}-\d{2}$/.test(month)) return json(400, { message: 'Invalid month' });
         return json(200, await lineItems(month));
+      }
+
+      case 'PATCH /finances/statements/{id}/lines/{line}': {
+        if (!hasAnyRole(groups, ['wife'])) return forbidden();
+        const body = parseBody(event.body) as Partial<Recategorize>;
+        const plan = await loadPlan();
+        if (!plan.categories.some((c) => c.key === body.categoryKey)) {
+          return json(400, { message: 'Unknown category' });
+        }
+        const moved = await recategorize(id, event.pathParameters?.['line'] ?? '', body);
+        return moved
+          ? json(200, { id, categoryKey: body.categoryKey })
+          : json(409, { message: 'This statement has changed. Reload the page and try again.' });
       }
 
       case 'GET /finances/admin':
@@ -199,7 +216,61 @@ async function rememberRules(rules: NewRule[]): Promise<void> {
   if (mutations.length) await sanity.mutate(mutations);
 }
 
-function parseBody(body: string | undefined): { statement?: unknown; newRules?: NewRule[] } {
+/**
+ * Sets one line's category. The line must still have the description and
+ * amount the client saw (and not be a payment); returns false if it doesn't.
+ */
+async function recategorize(
+  id: string,
+  line: string,
+  body: Partial<Recategorize>,
+): Promise<boolean> {
+  const repayment = line === 'repayment';
+  const index = Number(line);
+  if (!repayment && !(Number.isInteger(index) && index >= 0 && index < 2000)) return false;
+  if (!repayment && (typeof body.description !== 'string' || !Number.isInteger(body.amountCents))) {
+    return false;
+  }
+
+  try {
+    await db.send(
+      repayment
+        ? new UpdateCommand({
+            TableName: TABLE,
+            Key: { id },
+            UpdateExpression: 'SET friendRepayment.categoryKey = :key',
+            ConditionExpression: 'attribute_exists(id) AND friendRepayment.amountCents > :zero',
+            ExpressionAttributeValues: { ':key': body.categoryKey, ':zero': 0 },
+          })
+        : new UpdateCommand({
+            TableName: TABLE,
+            Key: { id },
+            // The index is a validated integer; list indexes can't be expression values
+            UpdateExpression: `SET transactions[${index}].categoryKey = :key`,
+            ConditionExpression:
+              `transactions[${index}].description = :description AND ` +
+              `transactions[${index}].amountCents = :amount AND ` +
+              `transactions[${index}].kind <> :payment`,
+            ExpressionAttributeValues: {
+              ':key': body.categoryKey,
+              ':description': body.description,
+              ':amount': body.amountCents,
+              ':payment': 'payment',
+            },
+          }),
+    );
+    return true;
+  } catch (error) {
+    if ((error as { name?: string }).name === 'ConditionalCheckFailedException') return false;
+    throw error;
+  }
+}
+
+function parseBody(body: string | undefined): {
+  statement?: unknown;
+  newRules?: NewRule[];
+  [key: string]: unknown;
+} {
   try {
     return body ? JSON.parse(body) : {};
   } catch {

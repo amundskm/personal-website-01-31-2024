@@ -29,7 +29,12 @@ const httpApi = new HttpApi(apiStack, 'MembersApi', {
   corsPreflight: {
     // Bearer tokens, not cookies, so any origin (localhost, Amplify preview, your domain) is fine
     allowOrigins: ['*'],
-    allowMethods: [CorsHttpMethod.GET, CorsHttpMethod.PUT, CorsHttpMethod.DELETE],
+    allowMethods: [
+      CorsHttpMethod.GET,
+      CorsHttpMethod.PUT,
+      CorsHttpMethod.PATCH,
+      CorsHttpMethod.DELETE,
+    ],
     allowHeaders: ['Authorization', 'Content-Type'],
   },
 });
@@ -66,6 +71,12 @@ httpApi.addRoutes({
 httpApi.addRoutes({
   path: '/finances/months/{month}',
   methods: [HttpMethod.GET],
+  integration: financesIntegration,
+  authorizer,
+});
+httpApi.addRoutes({
+  path: '/finances/statements/{id}/lines/{line}',
+  methods: [HttpMethod.PATCH],
   integration: financesIntegration,
   authorizer,
 });

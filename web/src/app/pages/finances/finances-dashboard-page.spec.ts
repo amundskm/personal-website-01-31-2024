@@ -56,6 +56,8 @@ const items: LineItem[] = [
     kind: 'purchase',
     categoryKey: 'fun',
     last4: '1234',
+    statementId: '1234_2030-02-01',
+    index: 0,
   },
   {
     date: '2030-01-20',
@@ -64,6 +66,8 @@ const items: LineItem[] = [
     kind: 'purchase',
     categoryKey: 'fun',
     last4: '1234',
+    statementId: '1234_2030-02-01',
+    index: 1,
   },
   {
     date: '2030-01-22',
@@ -72,6 +76,8 @@ const items: LineItem[] = [
     kind: 'credit',
     categoryKey: 'fun',
     last4: '1234',
+    statementId: '1234_2030-02-01',
+    index: 2,
   },
   {
     date: '2030-01-08',
@@ -80,16 +86,20 @@ const items: LineItem[] = [
     kind: 'purchase',
     categoryKey: 'food',
     last4: '1234',
+    statementId: '1234_2030-02-01',
+    index: 3,
   },
 ];
 
 describe('FinancesDashboardPage', () => {
   let requested: string[];
+  let sent: { path: string; method?: string; body?: unknown }[];
 
   let fixture: ComponentFixture<FinancesDashboardPage>;
 
   async function render() {
     requested = [];
+    sent = [];
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
@@ -97,7 +107,11 @@ describe('FinancesDashboardPage', () => {
           provide: AuthService,
           useValue: {
             isAdmin: signal(false),
-            fetchMembersApi: (path: string) => {
+            fetchMembersApi: (path: string, options: { method?: string; body?: unknown } = {}) => {
+              if (options.method) {
+                sent.push({ path, ...options });
+                return Promise.resolve({});
+              }
               requested.push(path);
               return Promise.resolve(path === '/finances' ? data : items);
             },
@@ -148,8 +162,9 @@ describe('FinancesDashboardPage', () => {
 
     expect(requested).toEqual(['/finances', '/finances/months/2030-02']);
     expect(toggle().getAttribute('aria-expanded')).toBe('true');
+    // Date, description, amount (the fourth cell is the category dropdown)
     const lines = [...el.querySelectorAll('.items tr')].map((tr) =>
-      [...tr.querySelectorAll('th, td')].map((cell) => cell.textContent!.trim()),
+      [...tr.querySelectorAll('th, td')].slice(0, 3).map((cell) => cell.textContent!.trim()),
     );
     expect(lines).toEqual([
       ['Jan 5', 'GAME SHOP', '$90.00'],
@@ -162,5 +177,38 @@ describe('FinancesDashboardPage', () => {
     fixture.detectChanges();
     expect(el.querySelector('.line-items')).toBeNull();
     expect(toggle().getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('moves a line to another category and refreshes the totals', async () => {
+    const el = await render();
+    const funToggle = [...el.querySelectorAll<HTMLButtonElement>('.row-toggle')].find((b) =>
+      b.textContent!.includes('Fun'),
+    )!;
+    funToggle.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const select = el.querySelectorAll<HTMLSelectElement>('.items select.move')[1];
+    expect(select.value).toBe('fun');
+    select.value = 'food';
+    select.dispatchEvent(new Event('change'));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(sent).toEqual([
+      {
+        path: '/finances/statements/1234_2030-02-01/lines/1',
+        method: 'PATCH',
+        body: { categoryKey: 'food', description: 'ARCADE', amountCents: 8000 },
+      },
+    ]);
+    // Totals and the open category's lines are fetched again
+    expect(requested).toEqual([
+      '/finances',
+      '/finances/months/2030-02',
+      '/finances',
+      '/finances/months/2030-02',
+    ]);
+    expect(el.querySelector('.move-message')?.textContent).toContain('Moved ARCADE to Food.');
   });
 });

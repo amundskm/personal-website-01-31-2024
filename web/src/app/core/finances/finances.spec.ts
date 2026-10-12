@@ -1,4 +1,5 @@
 import {
+  lineRef,
   matchCategory,
   monthLineItems,
   monthWindow,
@@ -252,7 +253,12 @@ describe('monthLineItems', () => {
         ['2026-01-04', 'Repaid by friends', -4000, 'repayment', 'food'],
       ],
     );
-    expect(items.every((i) => i.last4 === '1234')).toBe(true);
+    expect(items.every((i) => i.last4 === '1234' && i.statementId === '1234_2026-01-04')).toBe(
+      true,
+    );
+    // Positions in the stored transactions (the payment at 2 is skipped); null = repayment
+    expect(items.map((i) => i.index)).toEqual([1, 3, 0, null]);
+    expect(items.map(lineRef)).toEqual(['1', '3', '0', 'repayment']);
 
     // Per category, the lines add up to the month summary
     const [summary] = summarizeMonths(statements.slice(0, 1), plan);

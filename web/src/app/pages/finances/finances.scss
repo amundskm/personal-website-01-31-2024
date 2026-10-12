@@ -232,3 +232,13 @@ tr.is-over .bar span {
   margin-left: var(--space-2);
   color: var(--color-muted);
 }
+
+.move {
+  max-width: 11rem;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.move-message {
+  margin: var(--space-2) 0 0;
+}
