@@ -146,6 +146,31 @@ browser ──login──▶ Cognito (user pool, one group per role)
 
 If someone is added to a group while signed in, they need to log out and back in to pick it up.
 
+## Family finances
+
+| URL | Who | What |
+|---|---|---|
+| `/family/finances` | wife | This month's spending vs the stage target, a monthly trend, and budget by category |
+| `/family/finances/upload` | admin | Upload a Chase statement PDF, check/fix categories, save |
+
+**No financial data is in this repository** (it's public), and none is in the site bundle:
+
+- **Plan**: budgets, stage targets and merchant patterns are the *Spending plan* in the Studio's
+  private workspace.
+- **Statements**: parsed transactions, stored in a DynamoDB table (`FinanceStatements`) that only the
+  `finances` Lambda can read. The PDF is read in the browser on the upload page and never uploaded.
+- **Access**: `GET /finances` (wife) returns monthly totals only; the admin endpoints return the
+  merchant patterns and accept uploads. Both are checked in the Lambda, not just in the UI.
+- **Tests** use made-up data. Keep it that way.
+
+Statements are grouped by the month of their closing date, so one Chase statement is one dashboard month.
+Each transaction gets the category whose longest merchant pattern it contains. When you pick a category
+for a new merchant and leave **Remember** ticked, the pattern is added to the plan for later uploads.
+
+**Setup:** in https://www.sanity.io/manage create an **Editor** API token, then add it as the Amplify secret
+`SANITY_PRIVATE_WRITE_TOKEN`. Do this before deploying, because the backend build fails without it.
+For a sandbox, use `npx ampx sandbox secret set SANITY_PRIVATE_WRITE_TOKEN`.
+
 ## Scripts (repo root)
 
 | Script | What it does |

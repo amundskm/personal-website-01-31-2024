@@ -1,0 +1,243 @@
+/**
+ * Finances domain logic, shared by the finances Lambda (which stores and
+ * summarizes statements) and the dashboard/upload pages.
+ *
+ * Contains no data: the plan lives in the private Sanity dataset and the
+ * statements in DynamoDB, both behind the members API. Transaction amounts are
+ * integer cents; plan budgets and targets are whole dollars, as entered in the Studio.
+ */
+
+export interface PlanCategory {
+  key: string;
+  name: string;
+  /** Dollars per month. */
+  monthlyBudget: number;
+  /** Case-insensitive substrings of the statement description. Admin only. */
+  merchantPatterns?: string[] | null;
+}
+
+export interface PlanStage {
+  label: string;
+  /** ISO date the stage's target applies from (by statement closing date). */
+  startDate: string;
+  /** Dollars per month. */
+  monthlyTarget: number;
+}
+
+export interface SpendingPlan {
+  categories: PlanCategory[];
+  stages: PlanStage[];
+}
+
+/** Payments to the card aren't spending; refunds (credits) reduce it. */
+export type TransactionKind = 'purchase' | 'credit' | 'payment' | 'fee';
+
+export interface StatementTransaction {
+  /** ISO date. */
+  date: string;
+  description: string;
+  amountCents: number;
+  kind: TransactionKind;
+  categoryKey: string | null;
+}
+
+export interface FriendRepayment {
+  amountCents: number;
+  categoryKey: string | null;
+}
+
+export interface Statement {
+  id: string;
+  last4: string;
+  openingDate: string;
+  closingDate: string;
+  /** "Purchases" from the statement summary, used to check the parse. */
+  purchasesTotalCents: number;
+  transactions: StatementTransaction[];
+  /** Money friends paid back (e.g. their share of a group dinner). */
+  friendRepayment: FriendRepayment;
+  uploadedAt?: string;
+}
+
+export interface StatementInfo {
+  id: string;
+  last4: string;
+  openingDate: string;
+  closingDate: string;
+  uploadedAt?: string;
+}
+
+/** One statement month (by closing date), as the dashboard shows it. */
+export interface MonthSummary {
+  /** `YYYY-MM` of the statements' closing date. */
+  month: string;
+  statements: StatementInfo[];
+  /** Spending after refunds and friend repayments. */
+  totalCents: number;
+  /** Per category key; uncategorized spending is under `UNCATEGORIZED`. */
+  byCategory: Record<string, number>;
+  friendRepaidCents: number;
+  /** The active stage's monthly target, in dollars. */
+  target: number | null;
+  stageLabel: string | null;
+}
+
+/** What the wife-only dashboard receives: totals only, no transactions or rules. */
+export interface FinancesDashboard {
+  categories: Omit<PlanCategory, 'merchantPatterns'>[];
+  months: MonthSummary[];
+}
+
+/** What the admin-only upload page receives. */
+export interface FinancesAdminData {
+  plan: SpendingPlan;
+  statements: StatementInfo[];
+}
+
+export interface NewRule {
+  categoryKey: string;
+  pattern: string;
+}
+
+export const UNCATEGORIZED = '_uncategorized';
+
+export const statementId = (last4: string, closingDate: string) => `${last4}_${closingDate}`;
+
+export const countsAsSpending = (tx: Pick<StatementTransaction, 'kind'>) => tx.kind !== 'payment';
+
+/** The category whose longest matching pattern is longest, so "AMAZON WEB" beats "AMAZON". */
+export function matchCategory(description: string, categories: PlanCategory[]): string | null {
+  const text = description.toUpperCase();
+  let best: { key: string; length: number } | null = null;
+  for (const category of categories) {
+    for (const raw of category.merchantPatterns ?? []) {
+      const pattern = raw.trim().toUpperCase();
+      if (pattern && text.includes(pattern) && pattern.length > (best?.length ?? 0)) {
+        best = { key: category.key, length: pattern.length };
+      }
+    }
+  }
+  return best?.key ?? null;
+}
+
+/**
+ * A starting point for a new merchant rule: the leading words of the
+ * description, stopping at store numbers, phone numbers and the like.
+ */
+export function suggestPattern(description: string): string {
+  const words = description.trim().split(/\s+/);
+  const kept: string[] = [];
+  for (const word of words) {
+    if (/\d/.test(word) && kept.length) break;
+    kept.push(word);
+    if (kept.length === 3) break;
+  }
+  return kept.join(' ');
+}
+
+/** The stage whose target applies on `date`: the latest one that has started. */
+export function stageFor(stages: PlanStage[], date: string): PlanStage | null {
+  return (
+    [...stages]
+      .filter((stage) => stage.startDate <= date)
+      .sort((a, b) => b.startDate.localeCompare(a.startDate))[0] ?? null
+  );
+}
+
+/** Groups statements by closing month and totals them, newest month first. */
+export function summarizeMonths(statements: Statement[], plan: SpendingPlan): MonthSummary[] {
+  const known = new Set(plan.categories.map((c) => c.key));
+  const keyFor = (key: string | null) => (key && known.has(key) ? key : UNCATEGORIZED);
+  const months = new Map<string, MonthSummary>();
+
+  for (const statement of statements) {
+    const month = statement.closingDate.slice(0, 7);
+    let summary = months.get(month);
+    if (!summary) {
+      summary = {
+        month,
+        statements: [],
+        totalCents: 0,
+        byCategory: {},
+        friendRepaidCents: 0,
+        target: null,
+        stageLabel: null,
+      };
+      months.set(month, summary);
+    }
+    summary.statements.push(toInfo(statement));
+
+    const add = (key: string, cents: number) => {
+      summary.byCategory[key] = (summary.byCategory[key] ?? 0) + cents;
+      summary.totalCents += cents;
+    };
+    for (const tx of statement.transactions) {
+      if (countsAsSpending(tx)) add(keyFor(tx.categoryKey), tx.amountCents);
+    }
+    const repaid = statement.friendRepayment?.amountCents ?? 0;
+    if (repaid) {
+      add(keyFor(statement.friendRepayment.categoryKey), -repaid);
+      summary.friendRepaidCents += repaid;
+    }
+  }
+
+  return [...months.values()]
+    .map((summary) => {
+      const latestClose = summary.statements
+        .map((s) => s.closingDate)
+        .sort()
+        .at(-1)!;
+      const stage = stageFor(plan.stages, latestClose);
+      summary.statements.sort((a, b) => a.closingDate.localeCompare(b.closingDate));
+      return { ...summary, target: stage?.monthlyTarget ?? null, stageLabel: stage?.label ?? null };
+    })
+    .sort((a, b) => b.month.localeCompare(a.month));
+}
+
+export function toInfo({
+  id,
+  last4,
+  openingDate,
+  closingDate,
+  uploadedAt,
+}: Statement): StatementInfo {
+  return { id, last4, openingDate, closingDate, ...(uploadedAt ? { uploadedAt } : {}) };
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const KINDS: readonly TransactionKind[] = ['purchase', 'credit', 'payment', 'fee'];
+
+/** Checks an uploaded statement's shape. Returns an error message, or null if valid. */
+export function validateStatement(value: unknown, id: string): string | null {
+  const s = value as Partial<Statement> | null;
+  if (!s || typeof s !== 'object') return 'Missing statement';
+  if (typeof s.last4 !== 'string' || !/^\d{4}$/.test(s.last4)) return 'Invalid card number';
+  if (!ISO_DATE.test(String(s.openingDate)) || !ISO_DATE.test(String(s.closingDate)))
+    return 'Invalid statement period';
+  if (statementId(s.last4, s.closingDate!) !== id) return 'Statement id does not match';
+  if (!Number.isInteger(s.purchasesTotalCents)) return 'Invalid purchases total';
+  if (!Array.isArray(s.transactions) || s.transactions.length > 2000) return 'Invalid transactions';
+  for (const tx of s.transactions) {
+    if (
+      !tx ||
+      !ISO_DATE.test(String(tx.date)) ||
+      typeof tx.description !== 'string' ||
+      tx.description.length > 300 ||
+      !Number.isInteger(tx.amountCents) ||
+      !KINDS.includes(tx.kind) ||
+      (tx.categoryKey !== null && typeof tx.categoryKey !== 'string')
+    ) {
+      return 'Invalid transaction';
+    }
+  }
+  const repayment = s.friendRepayment;
+  if (
+    !repayment ||
+    !Number.isInteger(repayment.amountCents) ||
+    repayment.amountCents < 0 ||
+    (repayment.categoryKey !== null && typeof repayment.categoryKey !== 'string')
+  ) {
+    return 'Invalid friend repayment';
+  }
+  return null;
+}

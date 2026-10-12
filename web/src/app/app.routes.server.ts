@@ -37,6 +37,7 @@ export const serverRoutes: ServerRoute[] = [
   // Members-only content is never prerendered; it's fetched after signing in
   { path: 'members', renderMode: RenderMode.Client },
   { path: 'members/**', renderMode: RenderMode.Client },
+  { path: 'family/**', renderMode: RenderMode.Client },
   {
     path: ':slug',
     renderMode: RenderMode.Prerender,

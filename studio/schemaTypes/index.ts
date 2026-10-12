@@ -1,5 +1,6 @@
 import {page} from './documents/page'
 import {memberPage} from './documents/memberPage'
+import {spendingPlan} from './documents/spendingPlan'
 import {post} from './documents/post'
 import {project} from './documents/project'
 import {siteSettings} from './documents/siteSettings'
@@ -16,6 +17,7 @@ export const schemaTypes = [
   project,
   siteSettings,
   memberPage,
+  spendingPlan,
   // Shared objects
   seo,
   link,

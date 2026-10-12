@@ -196,6 +196,29 @@ export type Seo = {
   noIndex?: boolean;
 };
 
+export type SpendingPlan = {
+  _id: string;
+  _type: 'spendingPlan';
+  _createdAt: string;
+  _updatedAt: string;
+  _rev: string;
+  title?: string;
+  categories?: Array<{
+    name?: string;
+    monthlyBudget?: number;
+    merchantPatterns?: Array<string>;
+    _type: 'budgetCategory';
+    _key: string;
+  }>;
+  stages?: Array<{
+    label?: string;
+    startDate?: string;
+    monthlyTarget?: number;
+    _type: 'planStage';
+    _key: string;
+  }>;
+};
+
 export type MemberPage = {
   _id: string;
   _type: 'memberPage';
@@ -476,6 +499,7 @@ export type AllSanitySchemaTypes =
   | PostReference
   | Link
   | Seo
+  | SpendingPlan
   | MemberPage
   | Slug
   | SiteSettings
@@ -1657,4 +1681,25 @@ export type MEMBER_PAGE_QUERY_RESULT = {
         reverseOnMobile?: boolean;
       }
   > | null;
+} | null;
+
+// Source: ../web/src/app/core/queries.ts
+// Variable: SPENDING_PLAN_QUERY
+// Query: *[_type == "spendingPlan" && _id == "spendingPlan"][0]{    "categories": coalesce(categories[]{ "key": _key, name, monthlyBudget, merchantPatterns }, []),    "stages": coalesce(stages[]{ label, startDate, monthlyTarget }, [])  }
+export type SPENDING_PLAN_QUERY_RESULT = {
+  categories:
+    | Array<{
+        key: string;
+        name: string | null;
+        monthlyBudget: number | null;
+        merchantPatterns: Array<string> | null;
+      }>
+    | Array<never>;
+  stages:
+    | Array<{
+        label: string | null;
+        startDate: string | null;
+        monthlyTarget: number | null;
+      }>
+    | Array<never>;
 } | null;

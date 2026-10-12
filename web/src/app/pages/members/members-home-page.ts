@@ -32,6 +32,17 @@ import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status
           </p>
         </header>
 
+        @if (auth.hasAnyRole(['wife'])) {
+          <div class="button-row family-links">
+            <a routerLink="/family/finances" class="btn btn--primary">Finances dashboard</a>
+            @if (auth.isAdmin()) {
+              <a routerLink="/family/finances/upload" class="btn btn--secondary"
+                >Upload a statement</a
+              >
+            }
+          </div>
+        }
+
         @if (!roleNames()) {
           <p class="empty">Your account doesn't have any permissions yet. Check back soon.</p>
         } @else if (pages.hasValue()) {
@@ -62,6 +73,11 @@ import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status
     </section>
   `,
   styleUrl: '../../shared/cards/card.scss',
+  styles: `
+    .family-links {
+      margin-bottom: var(--space-10);
+    }
+  `,
 })
 export class MembersHomePage implements OnInit {
   protected readonly auth = inject(AuthService);
