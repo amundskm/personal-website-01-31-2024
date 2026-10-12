@@ -4,6 +4,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
   input,
   output,
@@ -96,6 +97,7 @@ const STATUS_LABELS: Record<SuggestionStatus, string> = {
         </p>
       </form>
 
+      <p class="visually-hidden" role="status" aria-live="polite">{{ announcement() }}</p>
       @if (message(); as m) {
         <p class="ev-status" [class.ev-error]="m.error" [attr.role]="m.error ? 'alert' : 'status'">
           {{ m.text }}
@@ -116,6 +118,7 @@ const STATUS_LABELS: Record<SuggestionStatus, string> = {
         <li
           class="ev-comment"
           [id]="'comment-' + node.id"
+          [class.is-new]="fresh().has(node.id)"
           [class.is-suggestion]="node.kind === 'suggestion'"
           [class.is-deleted]="node.deleted"
           [class.is-highlighted]="highlighted() === node.id"
@@ -253,6 +256,11 @@ export class EventComments {
   /** The comment a link (e.g. from an email) points at. */
   protected readonly highlighted = signal<string | null>(null);
 
+  /** Other people's comments that arrived while the page was open, briefly highlighted. */
+  protected readonly fresh = signal<Set<string>>(new Set());
+  protected readonly announcement = signal('');
+  private known: Set<string> | null = null;
+
   protected readonly threads = computed(() => buildThreads(this.detail().comments ?? []));
   protected readonly total = computed(() => countComments(this.threads()));
   protected readonly manager = computed(() => {
@@ -272,6 +280,27 @@ export class EventComments {
   }
 
   constructor() {
+    // Spot comments that weren't there before (from the page's background refresh)
+    effect(() => {
+      const { comments, me } = this.detail();
+      const ids = (comments ?? []).map((c) => c.id);
+      if (!this.known) {
+        this.known = new Set(ids);
+        return;
+      }
+      const added = (comments ?? []).filter(
+        (c) => !this.known!.has(c.id) && c.authorId !== me.id && !c.deleted,
+      );
+      ids.forEach((id) => this.known!.add(id));
+      if (!added.length) return;
+      const addedIds = added.map((c) => c.id);
+      this.fresh.update((set) => new Set([...set, ...addedIds]));
+      this.announcement.set(added.length === 1 ? '1 new comment' : `${added.length} new comments`);
+      setTimeout(() => {
+        this.fresh.update((set) => new Set([...set].filter((id) => !addedIds.includes(id))));
+      }, 8000);
+    });
+
     // Scroll to #comment-<id> once the comments have rendered
     let scrolled = false;
     afterRenderEffect(() => {

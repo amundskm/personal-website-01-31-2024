@@ -217,3 +217,26 @@
     cursor: default;
   }
 }
+
+// Someone else's comment that just arrived
+.ev-comment.is-new > .ev-comment__body {
+  animation: ev-new 8s ease-out;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes ev-new {
+  0%,
+  60% {
+    background: color-mix(in srgb, var(--color-arcane) 22%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ev-comment.is-new > .ev-comment__body {
+    animation: none;
+    background: color-mix(in srgb, var(--color-arcane) 22%, transparent);
+  }
+}
