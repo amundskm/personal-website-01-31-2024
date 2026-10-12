@@ -45,6 +45,11 @@ export interface EmailContent {
   /** Free text shown in a panel, keeping line breaks (e.g. event details). */
   note?: string;
   button?: { href: string; text: string };
+  /**
+   * A plain link under the button showing the address itself (e.g.
+   * "All NEIA Boiz events: neiaboiz.com/events"), for mail apps that hide buttons.
+   */
+  siteLink?: { label: string; href: string };
   /** Why they got it, shown in the footer. */
   footer: string;
   /** e.g. email preferences and unsubscribe, shown after the footer text. */
@@ -109,7 +114,11 @@ export function renderEmail(content: EmailContent): string {
 <tr><td style="background:${C.card};border:2px dashed ${C.gold};border-radius:16px;padding:30px 28px">
   <p style="margin:0 0 10px;font-family:${PIXEL};font-size:19px;letter-spacing:2px;text-transform:uppercase;color:${C.gold}">${escapeHtml(content.eyebrow)}</p>
   <h1 style="margin:0 0 18px;font-family:${DISPLAY};font-size:27px;line-height:1.25;font-weight:700;letter-spacing:1px;color:${C.text}">${escapeHtml(content.heading)}</h1>
-  ${paragraphs}${details}${note}${button}
+  ${paragraphs}${details}${note}${button}${
+    content.siteLink
+      ? `<p style="margin:14px 0 0;font-family:${SANS};font-size:15px;line-height:1.5;color:${C.muted}">${escapeHtml(content.siteLink.label)} <a href="${escapeHtml(content.siteLink.href)}" style="color:${C.violet}">${escapeHtml(displayUrl(content.siteLink.href))}</a></p>`
+      : ''
+  }
 </td></tr>
 <tr><td style="padding:18px 8px 0;font-family:${SANS};font-size:14px;line-height:1.5;color:${C.muted}">
   ${escapeHtml(content.footer)}<br>
@@ -135,4 +144,9 @@ export function escapeHtml(text: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/** `https://neiaboiz.com/events` → `neiaboiz.com/events`, for showing a link's address. */
+export function displayUrl(href: string): string {
+  return href.replace(/^https?:\/\//, '').replace(/\/$/, '');
 }

@@ -23,8 +23,11 @@ export const auth = defineAuth({
               { label: 'Email', value: username() },
               { label: 'Password', value: code() },
             ],
-            note: "That password is temporary. You'll pick your own the first time you log in.",
+            note:
+              "That password is temporary. You'll pick your own the first time you log in. " +
+              'After that, bookmark neiaboiz.com: events, polls and RSVPs are all there.',
             button: { href: `${SITE_URL}/login`, text: 'Log in' },
+            siteLink: { label: 'Or go to', href: `${SITE_URL}/login` },
             footer: "You're getting this because someone added you to neiaboiz.com.",
           }),
       },

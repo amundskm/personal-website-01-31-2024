@@ -145,4 +145,19 @@ describe('EventPage', () => {
     const el = await render({ ...poll, status: 'cancelled' }, 'bob');
     expect(el.textContent).not.toContain('Restore');
   });
+
+  it('shows only invitees, and lets non-invitees follow along without voting', async () => {
+    const picked: GroupEvent = { ...poll, invitees: ['bob'], inviteesOnly: false };
+    let el = await render(picked, 'me'); // the organizer
+    expect(
+      [...el.querySelectorAll('.ev-poll tbody th')].map((th) => textWithoutAvatars(th)),
+    ).toEqual(['You', 'Bob']);
+    expect(el.textContent).toContain('2 people invited.');
+
+    TestBed.resetTestingModule();
+    el = await render(picked, 'zed');
+    expect(el.querySelector('.ev-notice')?.textContent).toContain("You're not invited");
+    expect(el.querySelector('.ev-poll tbody tr.is-me')).toBeNull();
+    expect(el.querySelectorAll('.ev-poll select').length).toBe(0);
+  });
 });

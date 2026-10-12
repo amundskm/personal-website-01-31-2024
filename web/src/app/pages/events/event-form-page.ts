@@ -16,6 +16,7 @@ import {
   DEFAULT_REMINDERS,
   type EventDate,
   type EventDetail,
+  type EventsOverview,
   type EventInput,
   type GroupEvent,
   REMINDER_PRESETS,
@@ -23,6 +24,7 @@ import {
 } from '../../core/events/events';
 import { SeoService } from '../../core/seo.service';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
+import { MemberAvatar } from './member-avatar';
 
 interface DateRow {
   key: number;
@@ -36,7 +38,7 @@ interface DateRow {
 /** Create an event (poll or fixed date), or edit one you organize. */
 @Component({
   selector: 'app-event-form-page',
-  imports: [RouterLink, LoadingComponent, LoadErrorComponent],
+  imports: [RouterLink, MemberAvatar, LoadingComponent, LoadErrorComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="section">
@@ -186,6 +188,82 @@ interface DateRow {
             </fieldset>
 
             <fieldset class="ev-fieldset">
+              <legend>Who's invited?</legend>
+              <div class="ev-choices" role="radiogroup" aria-label="Who's invited">
+                <label>
+                  <input
+                    type="radio"
+                    name="invite"
+                    [checked]="inviteMode() === 'everyone'"
+                    (change)="inviteMode.set('everyone')"
+                  />
+                  Everyone in NEIA Boiz
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="invite"
+                    [checked]="inviteMode() === 'selected'"
+                    (change)="inviteMode.set('selected')"
+                  />
+                  Specific people
+                </label>
+              </div>
+              @if (inviteMode() === 'selected') {
+                <div class="ev-invite-tools">
+                  <span class="ev-meta"
+                    >{{ selected().size }} invited, plus {{ organizerLabel() }}</span
+                  >
+                  <button type="button" class="btn btn--text" (click)="selectAll(true)">
+                    Select all
+                  </button>
+                  <button type="button" class="btn btn--text" (click)="selectAll(false)">
+                    Clear
+                  </button>
+                </div>
+                <ul class="ev-invite-list">
+                  @for (member of invitable(); track member.id) {
+                    <li>
+                      <label class="ev-check">
+                        <input
+                          type="checkbox"
+                          [checked]="selected().has(member.id)"
+                          (change)="toggleInvitee(member.id, $any($event.target).checked)"
+                        />
+                        <app-member-avatar
+                          [name]="member.name"
+                          [url]="member.avatarUrl"
+                          [size]="26"
+                        />
+                        {{ member.name }}
+                      </label>
+                    </li>
+                  }
+                </ul>
+                <div class="ev-choices" role="radiogroup" aria-label="Who can see it">
+                  <label>
+                    <input
+                      type="radio"
+                      name="visibility"
+                      [checked]="inviteesOnly()"
+                      (change)="inviteesOnly.set(true)"
+                    />
+                    Only invited people can see it
+                  </label>
+                  <label>
+                    <input
+                      type="radio"
+                      name="visibility"
+                      [checked]="!inviteesOnly()"
+                      (change)="inviteesOnly.set(false)"
+                    />
+                    All members can see it (only invited people get emails and can RSVP)
+                  </label>
+                </div>
+              }
+            </fieldset>
+
+            <fieldset class="ev-fieldset">
               <legend>Email reminders</legend>
               @for (preset of presets; track preset.minutes) {
                 <label class="ev-check">
@@ -231,6 +309,51 @@ export class EventFormPage implements OnInit {
     loader: ({ params: id }) =>
       this.auth.fetchMembersApi<EventDetail>(`/events/${encodeURIComponent(id)}`),
   });
+
+  /** For a new event: the member list to invite from. */
+  private readonly overview = resource({
+    params: () => (this.id() ? undefined : true),
+    loader: () => this.auth.fetchMembersApi<EventsOverview>('/events'),
+  });
+
+  protected readonly inviteMode = signal<'everyone' | 'selected'>('everyone');
+  protected readonly selected = signal<Set<string>>(new Set());
+  protected readonly inviteesOnly = signal(true);
+
+  private readonly people = computed(() => {
+    const source = this.id()
+      ? this.existing.hasValue()
+        ? this.existing.value()
+        : null
+      : this.overview.hasValue()
+        ? this.overview.value()
+        : null;
+    return source ? { me: source.me, members: source.members } : null;
+  });
+  /** The organizer: me on a new event, else whoever created it. */
+  private readonly organizerId = computed(
+    () => this.event()?.createdBy ?? this.people()?.me.id ?? null,
+  );
+  /** Everyone who can be picked (the organizer is always invited). */
+  protected readonly invitable = computed(() =>
+    (this.people()?.members ?? []).filter((m) => m.id !== this.organizerId()),
+  );
+  protected readonly organizerLabel = computed(() =>
+    this.organizerId() === this.people()?.me.id ? 'you' : 'the organizer',
+  );
+
+  protected toggleInvitee(id: string, on: boolean): void {
+    this.selected.update((set) => {
+      const next = new Set(set);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  protected selectAll(on: boolean): void {
+    this.selected.set(new Set(on ? this.invitable().map((m) => m.id) : []));
+  }
 
   protected readonly title = signal('');
   protected readonly details = signal('');
@@ -330,11 +453,15 @@ export class EventFormPage implements OnInit {
         })),
       confirmNow: this.mode() === 'fixed',
       reminderOffsets: this.reminders(),
+      invitees: this.inviteMode() === 'selected' ? [...this.selected()] : null,
+      inviteesOnly: this.inviteMode() === 'selected' && this.inviteesOnly(),
     };
     const problem =
-      this.mode() === 'poll' && input.options.length < 2
-        ? 'Add at least two dates to poll on, or choose "The date is set".'
-        : validateEventInput(input);
+      input.invitees && !input.invitees.length
+        ? 'Pick at least one person to invite, or choose everyone.'
+        : this.mode() === 'poll' && input.options.length < 2
+          ? 'Add at least two dates to poll on, or choose "The date is set".'
+          : validateEventInput(input);
     if (problem) {
       this.error.set(problem);
       return;
@@ -357,6 +484,9 @@ export class EventFormPage implements OnInit {
   }
 
   private fill(event: GroupEvent): void {
+    this.inviteMode.set(event.invitees ? 'selected' : 'everyone');
+    this.selected.set(new Set(event.invitees ?? []));
+    this.inviteesOnly.set(event.invitees ? !!event.inviteesOnly : true);
     this.title.set(event.title);
     this.details.set(event.details);
     this.placeName.set(event.location?.name ?? '');
