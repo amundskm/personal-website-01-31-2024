@@ -32,7 +32,7 @@ import { SeoService } from '../../core/seo.service';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
 import { NotFound } from '../not-found/not-found';
 import { EventComments } from './event-comments';
-import { MemberAvatar } from './member-avatar';
+import { MemberAvatar } from '../../shared/member-avatar/member-avatar';
 import { NamePrompt } from './name-prompt';
 
 const VOTES: { value: Vote; label: string; symbol: string }[] = [

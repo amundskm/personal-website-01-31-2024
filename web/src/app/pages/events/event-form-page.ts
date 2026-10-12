@@ -24,7 +24,7 @@ import {
 } from '../../core/events/events';
 import { SeoService } from '../../core/seo.service';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
-import { MemberAvatar } from './member-avatar';
+import { MemberAvatar } from '../../shared/member-avatar/member-avatar';
 
 interface DateRow {
   key: number;
