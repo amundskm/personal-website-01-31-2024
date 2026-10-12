@@ -1,4 +1,8 @@
 import {
+  formatDeadline,
+  pollJustClosed,
+  voteDeadline,
+  votingOpen,
   calendarFeedIcs,
   daysOf,
   googleCalendarUrl,
@@ -344,5 +348,70 @@ describe('invitations', () => {
     expect(canSee(hidden, 'carol', false)).toBe(false);
     expect(canSee(hidden, 'carol', true)).toBe(true);
     expect(canSee({ ...hidden, inviteesOnly: false }, 'carol', false)).toBe(true);
+  });
+});
+
+describe('voting deadlines', () => {
+  const poll = event({
+    status: 'polling',
+    confirmed: null,
+    options: [{ id: 'a', date: '2030-06-20' }],
+    voteBy: { date: '2030-06-10', time: '17:00' },
+  });
+
+  it('turns the local deadline into an instant (end of day without a time)', () => {
+    expect(voteDeadline(poll)!.toISOString()).toBe('2030-06-10T22:00:00.000Z');
+    expect(voteDeadline({ ...poll, voteBy: { date: '2030-06-10' } })!.toISOString()).toBe(
+      '2030-06-11T04:59:00.000Z',
+    );
+    expect(voteDeadline({ ...poll, voteBy: null })).toBeNull();
+    expect(formatDeadline({ date: '2030-06-10', time: '17:00' })).toBe('Mon, Jun 10, 5:00 PM');
+    expect(formatDeadline({ date: '2030-06-10' })).toBe('Mon, Jun 10, 11:59 PM');
+  });
+
+  it('keeps voting open until the deadline, and always without one', () => {
+    expect(votingOpen(poll, new Date('2030-06-10T21:59:00Z'))).toBe(true);
+    expect(votingOpen(poll, new Date('2030-06-10T22:00:00Z'))).toBe(false);
+    expect(votingOpen({ ...poll, voteBy: null }, new Date('2031-01-01T00:00:00Z'))).toBe(true);
+    expect(votingOpen({ ...poll, status: 'confirmed' }, new Date('2030-06-01T00:00:00Z'))).toBe(
+      false,
+    );
+  });
+
+  it('flags a poll to report once its deadline passes', () => {
+    const after = new Date('2030-06-11T00:00:00Z');
+    expect(pollJustClosed(poll, new Date('2030-06-09T00:00:00Z'))).toBe(false);
+    expect(pollJustClosed(poll, after)).toBe(true);
+    expect(pollJustClosed({ ...poll, voteClosedNotified: '2030-06-10T22:15:00Z' }, after)).toBe(
+      false,
+    );
+    expect(pollJustClosed({ ...poll, voteBy: null }, after)).toBe(false);
+  });
+
+  it('validates deadlines', () => {
+    const input = {
+      title: 'Trip',
+      details: '',
+      location: null,
+      options: [{ date: '2030-06-20' }, { date: '2030-06-27' }],
+      confirmNow: false,
+      reminderOffsets: [],
+      invitees: null,
+      inviteesOnly: false,
+    };
+    expect(validateEventInput({ ...input, voteBy: null })).toBeNull();
+    expect(validateEventInput({ ...input, voteBy: { date: '2030-06-15' } })).toBeNull();
+    expect(validateEventInput({ ...input, voteBy: { date: '2030-06-21' } })).toMatch(
+      /before the first/,
+    );
+    expect(validateEventInput({ ...input, voteBy: { date: 'x' } })).toMatch(/day for voting/);
+    expect(
+      validateEventInput({
+        ...input,
+        confirmNow: true,
+        options: [input.options[0]],
+        voteBy: { date: '2030-06-15' },
+      }),
+    ).toMatch(/set date/);
   });
 });

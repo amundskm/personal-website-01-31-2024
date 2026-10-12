@@ -43,6 +43,8 @@ import {
   type Email,
   type EmailKind,
   eventEmail,
+  pollClosedEmail,
+  type PollResult,
   type RecipientLinks,
 } from '../../../src/app/core/events/event-email';
 import {
@@ -53,16 +55,22 @@ import {
   wantsEmail,
 } from '../../../src/app/core/events/profile';
 import {
+  bestOptionIds,
   calendarFeedIcs,
   canManage,
   canSee,
   DEFAULT_TIME_ZONE,
   dueReminders,
+  formatDeadline,
+  formatEventDate,
+  pollJustClosed,
   restoredStatus,
+  scoreOptions,
   type EventDate,
   type EventInput,
   type EventOption,
   type GroupEvent,
+  invitedMembers,
   isInvited,
   type Member,
   type Reminder,
@@ -70,6 +78,9 @@ import {
   skipPastReminders,
   validateEventInput,
   type Vote,
+  type VoteDeadline,
+  voteDeadline,
+  votingOpen,
 } from '../../../src/app/core/events/events';
 import { callerGroups, json } from '../shared/http';
 
@@ -236,6 +247,10 @@ async function create(caller: Caller, body: Record<string, unknown>): Promise<Re
   if (invitees && !invitees.length) {
     return json(400, { message: 'Pick at least one person to invite, or invite everyone.' });
   }
+  const voteBy = confirmed ? null : cleanVoteBy(input.voteBy);
+  if (voteBy && deadlinePassed(voteBy, DEFAULT_TIME_ZONE, now)) {
+    return json(400, { message: 'Pick a voting deadline in the future.' });
+  }
   const event: GroupEvent = {
     id: newId(),
     title: input.title.trim(),
@@ -254,6 +269,7 @@ async function create(caller: Caller, body: Record<string, unknown>): Promise<Re
       : reminders,
     invitees,
     inviteesOnly: !!invitees && input.inviteesOnly,
+    voteBy,
   };
   await db.send(
     new PutCommand({ TableName: TABLE, Item: { pk: eventKey(event.id), type: 'event', ...event } }),
@@ -288,6 +304,13 @@ async function edit(caller: Caller, id: string, body: Record<string, unknown>): 
   if (invitees && !invitees.length) {
     return json(400, { message: 'Pick at least one person to invite, or invite everyone.' });
   }
+  // A deadline only matters while polling; changing it reopens voting
+  const stillPolling = existing.status === 'polling' && !input.confirmNow;
+  const voteBy = stillPolling ? cleanVoteBy(input.voteBy) : null;
+  const deadlineChanged = JSON.stringify(voteBy) !== JSON.stringify(existing.voteBy ?? null);
+  if (deadlineChanged && voteBy && deadlinePassed(voteBy, existing.timeZone, now)) {
+    return json(400, { message: 'Pick a voting deadline in the future.' });
+  }
 
   let reminders = reminderList(input.reminderOffsets, dateChanged ? [] : existing.reminders);
   if (confirmed && (dateChanged || newlyConfirmed)) {
@@ -304,13 +327,15 @@ async function edit(caller: Caller, id: string, body: Record<string, unknown>): 
     reminders,
     invitees,
     inviteesOnly: !!invitees && input.inviteesOnly,
+    voteBy,
+    voteClosedNotified: deadlineChanged ? null : (existing.voteClosedNotified ?? null),
   };
   await db.send(
     new UpdateCommand({
       TableName: TABLE,
       Key: { pk: eventKey(id) },
       UpdateExpression:
-        'SET title = :title, details = :details, #location = :location, #options = :options, confirmed = :confirmed, #status = :status, reminders = :reminders, invitees = :invitees, inviteesOnly = :inviteesOnly',
+        'SET title = :title, details = :details, #location = :location, #options = :options, confirmed = :confirmed, #status = :status, reminders = :reminders, invitees = :invitees, inviteesOnly = :inviteesOnly, voteBy = :voteBy, voteClosedNotified = :voteClosedNotified',
       ConditionExpression: 'attribute_exists(pk) AND #status <> :cancelled',
       ExpressionAttributeNames: {
         '#location': 'location',
@@ -327,6 +352,8 @@ async function edit(caller: Caller, id: string, body: Record<string, unknown>): 
         ':reminders': updated.reminders,
         ':invitees': updated.invitees,
         ':inviteesOnly': updated.inviteesOnly,
+        ':voteBy': updated.voteBy,
+        ':voteClosedNotified': updated.voteClosedNotified,
         ':cancelled': 'cancelled',
       },
     }),
@@ -355,8 +382,14 @@ async function edit(caller: Caller, id: string, body: Record<string, unknown>): 
 async function vote(caller: Caller, id: string, body: Record<string, unknown>): Promise<Result> {
   const event = await loadVisibleEvent(caller, id);
   if (!event) return json(404, { message: 'Event not found' });
-  if (event.status !== 'polling')
-    return json(409, { message: 'Voting has closed for this event.' });
+  if (!votingOpen(event)) {
+    return json(409, {
+      message:
+        event.status === 'polling' && event.voteBy
+          ? `Voting closed ${formatDeadline(event.voteBy)}.`
+          : 'Voting has closed for this event.',
+    });
+  }
   if (!isInvited(event, caller.id)) return notInvited();
   const raw = (body['votes'] ?? {}) as Record<string, unknown>;
   const votes: Record<string, Vote> = {};
@@ -856,7 +889,60 @@ async function sendDueReminders(now: Date): Promise<void> {
       }
       await notify('reminder', event, null, event.reminders[index].offsetMinutes);
     }
+
+    if (pollJustClosed(event, now)) {
+      // Claim it first, so the organizer is told once even if runs overlap
+      try {
+        await db.send(
+          new UpdateCommand({
+            TableName: TABLE,
+            Key: { pk: eventKey(event.id) },
+            UpdateExpression: 'SET voteClosedNotified = :now',
+            ConditionExpression:
+              '(attribute_not_exists(voteClosedNotified) OR voteClosedNotified = :null) AND #status = :polling',
+            ExpressionAttributeNames: { '#status': 'status' },
+            ExpressionAttributeValues: {
+              ':now': now.toISOString(),
+              ':null': null,
+              ':polling': 'polling',
+            },
+          }),
+        );
+      } catch (error) {
+        if ((error as { name?: string }).name === 'ConditionalCheckFailedException') continue;
+        throw error;
+      }
+      await notifyPollClosed(event);
+    }
   }
+}
+
+/** Emails the organizer the results once their poll's voting closes. */
+async function notifyPollClosed(event: GroupEvent): Promise<void> {
+  const members = await loadMembers(true);
+  const organizer = members.find((m) => m.id === event.createdBy);
+  if (!organizer || !wantsEmail(organizer.prefs, 'pollClosed')) return;
+
+  const best = new Set(bestOptionIds(event));
+  const results: PollResult[] = scoreOptions(event).map((score) => ({
+    label: formatEventDate(event.options.find((o) => o.id === score.optionId)!),
+    yes: score.yes,
+    maybe: score.maybe,
+    no: score.no,
+    best: best.has(score.optionId),
+  }));
+  const invited = invitedMembers(event, members);
+  const notVoted = invited.filter((m) => !event.votes[m.id]).map((m) => m.name);
+  const email = pollClosedEmail(
+    event,
+    results,
+    invited.length - notVoted.length,
+    invited.length,
+    notVoted,
+    `${env.SITE_URL}/events/${event.id}`,
+    await recipientLinks(organizer.id),
+  );
+  await sendEmail(organizer, email, 'pollClosed');
 }
 
 // ---------------------------------------------------------------------------
@@ -907,8 +993,12 @@ async function sendEmail(member: MemberRecord, email: Email, label: string): Pro
         Destination: { ToAddresses: [member.email] },
         Content: {
           Simple: {
-            Subject: { Data: email.subject },
-            Body: { Text: { Data: email.text }, Html: { Data: email.html } },
+            // Explicit UTF-8: dates use "–" and "·", which must not depend on a default
+            Subject: { Data: email.subject, Charset: 'UTF-8' },
+            Body: {
+              Text: { Data: email.text, Charset: 'UTF-8' },
+              Html: { Data: email.html, Charset: 'UTF-8' },
+            },
             // Lets mail apps show their own "Unsubscribe" button
             ...(email.unsubscribeUrl
               ? { Headers: [{ Name: 'List-Unsubscribe', Value: `<${email.unsubscribeUrl}>` }] }
@@ -1131,6 +1221,14 @@ async function cleanInvitees(
   const members = new Set((await loadMembers()).map((m) => m.id));
   return [...new Set(invitees)].filter((id) => id !== organizer && members.has(id));
 }
+
+function cleanVoteBy(voteBy: EventInput['voteBy'] | undefined): VoteDeadline | null {
+  if (!voteBy?.date) return null;
+  return { date: voteBy.date, ...(voteBy.time ? { time: voteBy.time } : {}) };
+}
+
+const deadlinePassed = (voteBy: VoteDeadline, timeZone: string, now: Date) =>
+  (voteDeadline({ voteBy, timeZone }) ?? now) <= now;
 
 function cleanLocation(location: EventInput['location']): GroupEvent['location'] {
   const name = location?.name?.trim();

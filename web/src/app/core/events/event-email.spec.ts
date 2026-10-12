@@ -1,5 +1,5 @@
 import { displayUrl, renderEmail } from '../../../../amplify/shared/email-layout';
-import { commentEmail, eventEmail } from './event-email';
+import { commentEmail, eventEmail, pollClosedEmail } from './event-email';
 import type { GroupEvent } from './events';
 
 // Made-up event only: the repository is public.
@@ -134,5 +134,42 @@ describe('links to the site', () => {
   it('displays addresses without the scheme', () => {
     expect(displayUrl('https://neiaboiz.com/login')).toBe('neiaboiz.com/login');
     expect(displayUrl('https://neiaboiz.com/')).toBe('neiaboiz.com');
+  });
+});
+
+describe('poll emails with a deadline', () => {
+  it('shows the vote-by time in the poll email', () => {
+    const email = eventEmail(
+      'poll',
+      {
+        ...event,
+        status: 'polling',
+        confirmed: null,
+        voteBy: { date: '2030-05-25', time: '17:00' },
+      },
+      url,
+    );
+    expect(email.text).toContain('Vote by: Sat, May 25, 5:00 PM');
+  });
+
+  it('sends the organizer the results, best date first', () => {
+    const email = pollClosedEmail(
+      event,
+      [
+        { label: 'Sat, Jun 1', yes: 1, maybe: 0, no: 2, best: false },
+        { label: 'Sat, Jun 8', yes: 3, maybe: 1, no: 0, best: true },
+      ],
+      4,
+      5,
+      ['Zed'],
+      url,
+    );
+    expect(email.subject).toBe('Voting closed: Lake <weekend>');
+    expect(email.text).toContain('4 of 5 invited people voted. Sat, Jun 8 works best.');
+    expect(email.text.indexOf('Sat, Jun 8: 3 yes')).toBeLessThan(
+      email.text.indexOf('Sat, Jun 1: 1 yes'),
+    );
+    expect(email.text).toContain("Didn't vote: Zed");
+    expect(email.text).toContain('Pick the date: https://neiaboiz.com/events/evt1');
   });
 });

@@ -96,7 +96,20 @@ export interface GroupEvent {
   invitees?: string[] | null;
   /** With invitees: hide the event from members who aren't invited. */
   inviteesOnly?: boolean;
+  /** Polls only: when voting closes (local date and time). */
+  voteBy?: VoteDeadline | null;
+  /** When the organizer was told voting closed (so it's sent once). */
+  voteClosedNotified?: string | null;
 }
+
+/** A poll's voting deadline: a local date, and a time (end of day if none). */
+export interface VoteDeadline {
+  date: string;
+  time?: string | null;
+}
+
+/** A deadline without a time closes at the end of that day. */
+export const END_OF_DAY = '23:59';
 
 export interface Member {
   id: string;
@@ -147,6 +160,8 @@ export interface EventInput {
   invitees: string[] | null;
   /** With invitees: only they (plus the organizer and admins) can see it. */
   inviteesOnly: boolean;
+  /** Polls: when voting closes; null for no deadline. */
+  voteBy: VoteDeadline | null;
 }
 
 /** Most people a single event can invite individually. */
@@ -174,6 +189,38 @@ export function reminderLabel(minutes: number): string {
 }
 
 /** Whether `memberId` may edit, confirm or cancel the event. */
+/** When voting closes, as an instant; null if the poll has no deadline. */
+export function voteDeadline(event: Pick<GroupEvent, 'voteBy' | 'timeZone'>): Date | null {
+  return event.voteBy
+    ? zonedToUtc(event.voteBy.date, event.voteBy.time || END_OF_DAY, event.timeZone)
+    : null;
+}
+
+/** Whether people can still vote: a poll whose deadline (if any) hasn't passed. */
+export function votingOpen(
+  event: Pick<GroupEvent, 'status' | 'voteBy' | 'timeZone'>,
+  now = new Date(),
+): boolean {
+  const deadline = voteDeadline(event);
+  return event.status === 'polling' && (!deadline || now < deadline);
+}
+
+/** A poll whose deadline has passed and whose organizer hasn't been told yet. */
+export function pollJustClosed(event: GroupEvent, now = new Date()): boolean {
+  const deadline = voteDeadline(event);
+  return event.status === 'polling' && !!deadline && now >= deadline && !event.voteClosedNotified;
+}
+
+/** "Fri, Jul 2, 5:00 PM" (or "…, 11:59 PM" at the end of the day). */
+export function formatDeadline(voteBy: VoteDeadline): string {
+  const day = new Date(`${voteBy.date}T00:00:00`).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+  return `${day}, ${formatTime(voteBy.time || END_OF_DAY)}`;
+}
+
 /** Whether the event is for everyone, or a chosen list. */
 export const isForEveryone = (event: Pick<GroupEvent, 'invitees'>) => !event.invitees;
 
@@ -352,6 +399,15 @@ export function validateEventInput(value: unknown): string | null {
     if (!input.invitees.length) return 'Pick at least one person to invite, or invite everyone.';
   }
   if (typeof input.inviteesOnly !== 'boolean') return 'Invalid visibility';
+  if (input.voteBy !== null && input.voteBy !== undefined) {
+    if (typeof input.voteBy !== 'object' || !DATE.test(String(input.voteBy.date)))
+      return 'Pick a day for voting to close.';
+    if (input.voteBy.time && !TIME.test(String(input.voteBy.time))) return 'Times must be HH:MM.';
+    if (input.confirmNow) return "A set date doesn't need a voting deadline.";
+    const firstDate = [...input.options].map((o) => o.date).sort()[0];
+    if (firstDate && input.voteBy.date > firstDate)
+      return 'Voting should close before the first proposed date.';
+  }
   if (typeof input.confirmNow !== 'boolean') return 'Invalid confirmNow';
   if (input.confirmNow && input.options.length !== 1) return 'A fixed date needs exactly one date.';
   if (
