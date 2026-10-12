@@ -1,8 +1,19 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  ElementRef,
+  inject,
+  input,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { filter } from 'rxjs';
 import { AuthService } from '../../core/auth/auth.service';
+import { MyProfileService } from '../../core/events/my-profile.service';
+import { MemberAvatar } from '../../shared/member-avatar/member-avatar';
 import type { SanityLink, SiteSettings } from '../../core/models';
 import { resolveLink } from '../../core/paths';
 import { WizardHat } from '../../shared/wizard/wizard-hat';
@@ -27,7 +38,11 @@ const DEFAULT_NAV = [
 
 @Component({
   selector: 'app-header',
-  imports: [RouterLink, RouterLinkActive, WizardHat],
+  imports: [RouterLink, RouterLinkActive, WizardHat, MemberAvatar],
+  host: {
+    '(document:click)': 'closeOnOutsideClick($event)',
+    '(document:keydown.escape)': 'closeAccount(true)',
+  },
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <header class="header">
@@ -73,8 +88,41 @@ const DEFAULT_NAV = [
             <!-- Only known in the browser, so nothing is prerendered here -->
             @switch (auth.state().status) {
               @case ('signedIn') {
-                <li><a routerLink="/members" routerLinkActive="is-active">Members</a></li>
-                <li><button type="button" (click)="signOut()">Log out</button></li>
+                <li><a routerLink="/members" routerLinkActive="is-active">Da Boiz</a></li>
+                <li class="account" #account>
+                  <button
+                    #accountButton
+                    type="button"
+                    class="account__button"
+                    aria-haspopup="menu"
+                    aria-controls="account-menu"
+                    [attr.aria-expanded]="accountOpen()"
+                    (click)="toggleAccount()"
+                  >
+                    <app-member-avatar [name]="displayName()" [url]="avatarUrl()" [size]="34" />
+                    <span class="account__label">{{ displayName() }}</span>
+                    <span class="visually-hidden">: account menu</span>
+                  </button>
+                  @if (accountOpen()) {
+                    <ul
+                      id="account-menu"
+                      class="account__menu"
+                      role="menu"
+                      (keydown)="menuKeys($event)"
+                    >
+                      @if (profiles.available()) {
+                        <li role="none">
+                          <a role="menuitem" routerLink="/profile" (click)="closeAccount()">
+                            Profile settings
+                          </a>
+                        </li>
+                      }
+                      <li role="none">
+                        <button role="menuitem" type="button" (click)="signOut()">Log out</button>
+                      </li>
+                    </ul>
+                  }
+                </li>
               }
               @case ('signedOut') {
                 <li><a routerLink="/login" routerLinkActive="is-active">Log in</a></li>
@@ -90,6 +138,17 @@ const DEFAULT_NAV = [
 export class Header {
   private readonly router = inject(Router);
   protected readonly auth = inject(AuthService);
+  protected readonly profiles = inject(MyProfileService);
+
+  private readonly account = viewChild<ElementRef<HTMLElement>>('account');
+  private readonly accountButton = viewChild<ElementRef<HTMLButtonElement>>('accountButton');
+  protected readonly accountOpen = signal(false);
+
+  /** Profile name if set, else the part of the email before the @. */
+  protected readonly displayName = computed(
+    () => this.profiles.profile()?.name ?? this.auth.user()?.email.split('@')[0] ?? 'Account',
+  );
+  protected readonly avatarUrl = computed(() => this.profiles.profile()?.avatarUrl ?? null);
 
   readonly settings = input<SiteSettings | null>();
 
@@ -108,12 +167,58 @@ export class Header {
         filter((e) => e instanceof NavigationEnd),
         takeUntilDestroyed(),
       )
-      .subscribe(() => this.menuOpen.set(false));
+      .subscribe(() => {
+        this.menuOpen.set(false);
+        this.accountOpen.set(false);
+      });
+  }
+
+  protected toggleAccount(): void {
+    const open = !this.accountOpen();
+    this.accountOpen.set(open);
+    // Move focus into the menu so it works from the keyboard
+    if (open) setTimeout(() => this.menuItems()[0]?.focus());
+  }
+
+  protected closeAccount(returnFocus = false): void {
+    if (!this.accountOpen()) return;
+    this.accountOpen.set(false);
+    if (returnFocus) this.accountButton()?.nativeElement.focus();
+  }
+
+  protected closeOnOutsideClick(event: MouseEvent): void {
+    const account = this.account()?.nativeElement;
+    if (this.accountOpen() && account && !account.contains(event.target as Node)) {
+      this.accountOpen.set(false);
+    }
+  }
+
+  /** Arrow keys move between items; Tab leaves the menu and closes it. */
+  protected menuKeys(event: KeyboardEvent): void {
+    const items = this.menuItems();
+    const index = items.indexOf(document.activeElement as HTMLElement);
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      items[(index + step + items.length) % items.length]?.focus();
+    } else if (event.key === 'Tab') {
+      this.accountOpen.set(false);
+    }
+  }
+
+  private menuItems(): HTMLElement[] {
+    return [
+      ...(this.account()?.nativeElement.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []),
+    ];
   }
 
   protected async signOut(): Promise<void> {
+    this.accountOpen.set(false);
     await this.auth.signOut();
     this.menuOpen.set(false);
-    if (this.router.url.startsWith('/members')) await this.router.navigateByUrl('/');
+    // Leave pages that need a login
+    if (/^\/(members|family|events|profile)(\/|$|\?|#)/.test(this.router.url)) {
+      await this.router.navigateByUrl('/');
+    }
   }
 }

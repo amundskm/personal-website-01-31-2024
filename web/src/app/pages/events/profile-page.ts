@@ -19,9 +19,10 @@ import {
   NO_EMAILS,
   PREF_LABELS,
 } from '../../core/events/profile';
+import { MyProfileService } from '../../core/events/my-profile.service';
 import { SeoService } from '../../core/seo.service';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
-import { MemberAvatar } from './member-avatar';
+import { MemberAvatar } from '../../shared/member-avatar/member-avatar';
 
 /** Your name, photo and which event emails you get. */
 @Component({
@@ -190,6 +191,7 @@ import { MemberAvatar } from './member-avatar';
 })
 export class ProfilePage implements OnInit {
   private readonly auth = inject(AuthService);
+  private readonly myProfile = inject(MyProfileService);
   private readonly seo = inject(SeoService);
 
   protected readonly data = resource({
@@ -300,7 +302,10 @@ export class ProfilePage implements OnInit {
     this.message.set(null);
     try {
       const profile = await this.auth.fetchMembersApi<ProfileInfo>(path, { method, body });
-      if (profile) this.data.set(profile);
+      if (profile) {
+        this.data.set(profile);
+        this.myProfile.set(profile);
+      }
       this.message.set({ text: done, error: false });
     } catch (error) {
       this.message.set({

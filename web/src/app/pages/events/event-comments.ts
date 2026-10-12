@@ -24,7 +24,7 @@ import {
   timeAgo,
 } from '../../core/events/comments';
 import { canManage, type EventDetail } from '../../core/events/events';
-import { MemberAvatar } from './member-avatar';
+import { MemberAvatar } from '../../shared/member-avatar/member-avatar';
 
 const STATUS_LABELS: Record<SuggestionStatus, string> = {
   open: 'Open',

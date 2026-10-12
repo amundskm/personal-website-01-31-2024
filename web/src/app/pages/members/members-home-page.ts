@@ -22,7 +22,7 @@ import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status
     <section class="section">
       <div class="container">
         <header class="page-header">
-          <p class="eyebrow">Members only</p>
+          <p class="eyebrow">Da Boiz</p>
           <h1>Welcome back</h1>
           <p class="section-intro">
             Signed in as {{ auth.user()?.email }}
@@ -94,7 +94,7 @@ export class MembersHomePage implements OnInit {
 
   ngOnInit(): void {
     this.seo.setPage({
-      title: 'Members',
+      title: 'Da Boiz',
       seo: { title: null, description: null, image: null, noIndex: true },
     });
   }
