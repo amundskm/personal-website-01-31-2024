@@ -3,7 +3,7 @@ import {DocumentIcon} from '@sanity/icons/Document'
 import {blockTypes} from '../blocks'
 
 /** Slugs that collide with built-in Angular routes. */
-const RESERVED_SLUGS = ['blog', 'projects', 'login', 'members', 'family']
+const RESERVED_SLUGS = ['blog', 'projects', 'login', 'members', 'family', 'events']
 
 export const page = defineType({
   name: 'page',
