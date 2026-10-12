@@ -48,6 +48,8 @@ export class AuthService {
   /** Resolves once the signed-in state is known. */
   readonly ready: Promise<void> = this.backend.then((backend) => this.refresh(backend));
 
+  readonly isAdmin = computed(() => this.user()?.roles.includes('admin') ?? false);
+
   hasAnyRole(allowed: readonly Role[]): boolean {
     const user = this.user();
     return !!user && hasAnyRole(user.roles, allowed);
@@ -89,17 +91,31 @@ export class AuthService {
     this._state.set({ status: 'signedOut' });
   }
 
-  /** Calls the members API with the user's access token. Returns null on 404. */
-  async fetchMembersApi<T>(path: string): Promise<T | null> {
+  /**
+   * Calls the members API with the user's access token. Returns null on 404;
+   * other errors throw with the API's message.
+   */
+  async fetchMembersApi<T>(
+    path: string,
+    options: { method?: 'GET' | 'PUT' | 'DELETE'; body?: unknown } = {},
+  ): Promise<T | null> {
     const { auth, membersApiUrl } = await this.requireBackend();
     const { tokens } = await auth.fetchAuthSession();
     if (!tokens) throw new Error('Not signed in');
 
     const response = await fetch(`${membersApiUrl}${path}`, {
-      headers: { Authorization: `Bearer ${tokens.accessToken.toString()}` },
+      method: options.method ?? 'GET',
+      headers: {
+        Authorization: `Bearer ${tokens.accessToken.toString()}`,
+        ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
+      ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
     });
     if (response.status === 404) return null;
-    if (!response.ok) throw new Error(`Members API responded ${response.status}`);
+    if (!response.ok) {
+      const { message } = (await response.json().catch(() => ({}))) as { message?: string };
+      throw new Error(message ?? `Members API responded ${response.status}`);
+    }
     return (await response.json()) as T;
   }
 

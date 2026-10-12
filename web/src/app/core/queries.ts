@@ -163,3 +163,14 @@ export const MEMBER_PAGE_QUERY = defineQuery(`
     sections[]{ ${sectionFields} }
   }
 `);
+
+// ---------------------------------------------------------------------------
+// Finances (private dataset, run by the finances Lambda)
+// ---------------------------------------------------------------------------
+
+export const SPENDING_PLAN_QUERY = defineQuery(`
+  *[_type == "spendingPlan" && _id == "spendingPlan"][0]{
+    "categories": coalesce(categories[]{ "key": _key, name, monthlyBudget, merchantPatterns }, []),
+    "stages": coalesce(stages[]{ label, startDate, monthlyTarget }, [])
+  }
+`);

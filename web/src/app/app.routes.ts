@@ -42,6 +42,26 @@ export const routes: Routes = [
       },
     ],
   },
+  // Family area. Finances data comes only from the members API, never the bundle.
+  {
+    path: 'family/finances',
+    canActivate: [requireRole('wife')],
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./pages/finances/finances-dashboard-page').then((m) => m.FinancesDashboardPage),
+      },
+      {
+        path: 'upload',
+        canActivate: [requireRole('admin')],
+        loadComponent: () =>
+          import('./pages/finances/upload/statement-upload-page').then(
+            (m) => m.StatementUploadPage,
+          ),
+      },
+    ],
+  },
   // Any other single-segment path is looked up as a CMS page (and 404s if missing)
   { path: ':slug', component: CmsPage },
   {
