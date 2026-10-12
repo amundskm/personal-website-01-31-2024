@@ -62,6 +62,29 @@ export const routes: Routes = [
       },
     ],
   },
+  // NEIA Boiz group events. Event data comes only from the members API.
+  {
+    path: 'events',
+    canActivate: [requireRole('neia-boiz')],
+    children: [
+      {
+        path: '',
+        loadComponent: () => import('./pages/events/events-page').then((m) => m.EventsPage),
+      },
+      {
+        path: 'new',
+        loadComponent: () => import('./pages/events/event-form-page').then((m) => m.EventFormPage),
+      },
+      {
+        path: ':id',
+        loadComponent: () => import('./pages/events/event-page').then((m) => m.EventPage),
+      },
+      {
+        path: ':id/edit',
+        loadComponent: () => import('./pages/events/event-form-page').then((m) => m.EventFormPage),
+      },
+    ],
+  },
   // Any other single-segment path is looked up as a CMS page (and 404s if missing)
   { path: ':slug', component: CmsPage },
   {

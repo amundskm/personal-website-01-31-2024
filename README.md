@@ -171,6 +171,32 @@ for a new merchant and leave **Remember** ticked, the pattern is added to the pl
 `SANITY_PRIVATE_WRITE_TOKEN`. Do this before deploying, because the backend build fails without it.
 For a sandbox, use `npx ampx sandbox secret set SANITY_PRIVATE_WRITE_TOKEN`.
 
+## NEIA Boiz events
+
+`/events` (NEIA Boiz members, and admins) is for planning group get-togethers:
+
+| URL | What |
+|---|---|
+| `/events` | Open polls (flags ones you haven't voted on), a month calendar of confirmed events, upcoming and past |
+| `/events/new`, `/events/:id/edit` | Title, details, place, either several dates to poll or one set date, and email reminder times |
+| `/events/:id` | Poll: everyone × each date (Yes / Maybe / No), best date highlighted, organizer confirms. Confirmed: RSVP, who's coming, Add to calendar (.ics) |
+
+- **Who manages an event:** any member can create one. The organizer and admins can edit, confirm or cancel it.
+- **Members** are everyone in the `neia-boiz` and `admin` Cognito groups. Each sets a display name the first time they visit.
+- **Data** lives in the `GroupEvents` DynamoDB table, behind the members API. The `group-events` Lambda checks the role.
+- **Emails** go one per person, from `events@neiaboiz.com`:
+  - when a poll opens;
+  - when a date is confirmed, changes or is cancelled;
+  - at each reminder (default 1 week before; people who can't make it are skipped).
+  - An EventBridge rule runs the Lambda every 15 minutes to send due reminders.
+  - Times are Central, and all-day events count reminders back from 9 am.
+- **Email design:** all emails, including the Cognito account invitation, use `web/amplify/shared/email-layout.ts`.
+
+**Email setup (once):**
+1. The first deploy creates the SES identity for `neiaboiz.com` and adds its DKIM records to the Route 53 zone. Verification finishes on its own within about an hour.
+2. While SES is in its *sandbox*, emails only reach verified addresses. In the SES console (us-east-2), choose **Request production access**, describe it as transactional notifications to a small invite-only group, and submit. Approval usually takes about a day.
+3. Optional: once out of the sandbox, Cognito can send invitations from `@neiaboiz.com` instead of its default sender. Set `senders.email` in `web/amplify/auth/resource.ts`.
+
 ## Scripts (repo root)
 
 | Script | What it does |

@@ -1,18 +1,28 @@
 import { defineBackend } from '@aws-amplify/backend';
-import { RemovalPolicy } from 'aws-cdk-lib';
+import { Duration, RemovalPolicy, Stack } from 'aws-cdk-lib';
 import { CorsHttpMethod, HttpApi, HttpMethod } from 'aws-cdk-lib/aws-apigatewayv2';
 import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { AttributeType, BillingMode, Table } from 'aws-cdk-lib/aws-dynamodb';
+import { Rule, Schedule } from 'aws-cdk-lib/aws-events';
+import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
+import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
+import { HostedZone } from 'aws-cdk-lib/aws-route53';
+import { EmailIdentity, Identity } from 'aws-cdk-lib/aws-ses';
 import { auth } from './auth/resource';
 import { finances } from './functions/finances/resource';
+import { EVENTS_FROM_ADDRESS, groupEvents } from './functions/group-events/resource';
 import { membersContent } from './functions/members-content/resource';
 
-const backend = defineBackend({ auth, membersContent, finances });
+const backend = defineBackend({ auth, membersContent, finances, groupEvents });
 
-// Invite-only: accounts are created by an admin in the Cognito console
+// Invite-only: accounts are created by an admin in the Cognito console. Set
+// just this flag: replacing adminCreateUserConfig would drop the invitation email.
 const { userPool, userPoolClient, cfnResources } = backend.auth.resources;
-cfnResources.cfnUserPool.adminCreateUserConfig = { allowAdminCreateUserOnly: true };
+cfnResources.cfnUserPool.addPropertyOverride(
+  'AdminCreateUserConfig.AllowAdminCreateUserOnly',
+  true,
+);
 
 // HTTP API for gated content. API Gateway rejects requests without a valid
 // Cognito token, and the Lambda filters content by the caller's groups.
@@ -31,6 +41,7 @@ const httpApi = new HttpApi(apiStack, 'MembersApi', {
     allowOrigins: ['*'],
     allowMethods: [
       CorsHttpMethod.GET,
+      CorsHttpMethod.POST,
       CorsHttpMethod.PUT,
       CorsHttpMethod.PATCH,
       CorsHttpMethod.DELETE,
@@ -90,6 +101,65 @@ httpApi.addRoutes({
   path: '/finances/statements/{id}',
   methods: [HttpMethod.PUT, HttpMethod.DELETE],
   integration: financesIntegration,
+  authorizer,
+});
+
+// NEIA Boiz group events: polls, confirmed events and RSVPs, plus emails.
+const eventsStack = backend.createStack('group-events-data');
+const eventsTable = new Table(eventsStack, 'GroupEvents', {
+  partitionKey: { name: 'pk', type: AttributeType.STRING },
+  billingMode: BillingMode.PAY_PER_REQUEST,
+  pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
+  removalPolicy: RemovalPolicy.RETAIN,
+});
+const eventsLambda = backend.groupEvents.resources.lambda;
+eventsTable.grantReadWriteData(eventsLambda);
+backend.groupEvents.addEnvironment('EVENTS_TABLE', eventsTable.tableName);
+// Members are read from the user pool groups, so emails go to their sign-in addresses
+backend.groupEvents.addEnvironment('USER_POOL_ID', userPool.userPoolId);
+eventsLambda.addToRolePolicy(
+  new PolicyStatement({
+    actions: ['cognito-idp:ListUsersInGroup'],
+    resources: [userPool.userPoolArn],
+  }),
+);
+eventsLambda.addToRolePolicy(
+  new PolicyStatement({
+    actions: ['ses:SendEmail'],
+    resources: ['*'],
+    conditions: { StringEquals: { 'ses:FromAddress': EVENTS_FROM_ADDRESS } },
+  }),
+);
+// Verify neiaboiz.com for sending (DKIM records go into its Route 53 zone).
+// Only on the hosted branch: an identity is per account and region, so
+// personal sandboxes would collide with it.
+if (process.env['AWS_BRANCH']) {
+  new EmailIdentity(eventsStack, 'NeiaBoizEmailDomain', {
+    identity: Identity.publicHostedZone(
+      HostedZone.fromHostedZoneAttributes(eventsStack, 'NeiaBoizZone', {
+        hostedZoneId: 'Z057981539I3P54Q5JA3G',
+        zoneName: 'neiaboiz.com',
+      }),
+    ),
+  });
+}
+// Reminders: check every 15 minutes (in the function's own stack, avoiding a cross-stack cycle)
+new Rule(Stack.of(eventsLambda), 'EventRemindersSchedule', {
+  schedule: Schedule.rate(Duration.minutes(15)),
+  targets: [new LambdaFunction(eventsLambda)],
+});
+
+const eventsIntegration = new HttpLambdaIntegration('GroupEventsIntegration', eventsLambda);
+httpApi.addRoutes({
+  path: '/events',
+  methods: [HttpMethod.GET, HttpMethod.POST],
+  integration: eventsIntegration,
+  authorizer,
+});
+httpApi.addRoutes({
+  path: '/events/{proxy+}',
+  methods: [HttpMethod.GET, HttpMethod.PUT, HttpMethod.POST],
+  integration: eventsIntegration,
   authorizer,
 });
 

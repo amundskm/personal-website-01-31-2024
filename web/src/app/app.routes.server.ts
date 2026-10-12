@@ -38,6 +38,8 @@ export const serverRoutes: ServerRoute[] = [
   { path: 'members', renderMode: RenderMode.Client },
   { path: 'members/**', renderMode: RenderMode.Client },
   { path: 'family/**', renderMode: RenderMode.Client },
+  { path: 'events', renderMode: RenderMode.Client },
+  { path: 'events/**', renderMode: RenderMode.Client },
   {
     path: ':slug',
     renderMode: RenderMode.Prerender,

@@ -1,4 +1,5 @@
 import { defineAuth } from '@aws-amplify/backend';
+import { renderEmail, SITE_URL } from '../shared/email-layout';
 
 /**
  * Cognito user pool. Accounts are invite-only (self sign-up is disabled in
@@ -8,10 +9,24 @@ export const auth = defineAuth({
   loginWith: {
     email: {
       userInvitation: {
-        emailSubject: "You've been invited to Keith's website",
+        emailSubject: "You're invited to neiaboiz.com",
+        // Cognito fills in {username} and {####} (the temporary password)
         emailBody: (username, code) =>
-          `You've been given an account. Use "Log in" at the top of the site with ${username()} ` +
-          `and the temporary password ${code()} — you'll be asked to choose a new one.`,
+          renderEmail({
+            eyebrow: "You're invited",
+            heading: 'Welcome to neiaboiz.com',
+            preheader: 'Your account is ready. Here is how to log in.',
+            paragraphs: [
+              'An account has been made for you on neiaboiz.com, the home for NEIA Boiz events and plans.',
+            ],
+            details: [
+              { label: 'Email', value: username() },
+              { label: 'Password', value: code() },
+            ],
+            note: "That password is temporary. You'll pick your own the first time you log in.",
+            button: { href: `${SITE_URL}/login`, text: 'Log in' },
+            footer: "You're getting this because someone added you to neiaboiz.com.",
+          }),
       },
     },
   },

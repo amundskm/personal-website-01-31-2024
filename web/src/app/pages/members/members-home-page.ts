@@ -32,13 +32,13 @@ import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status
           </p>
         </header>
 
-        @if (auth.hasAnyRole(['wife'])) {
+        @if (auth.hasAnyRole(['wife']) || auth.hasAnyRole(['neia-boiz'])) {
           <div class="button-row family-links">
-            <a routerLink="/family/finances" class="btn btn--primary">Finances dashboard</a>
-            @if (auth.isAdmin()) {
-              <a routerLink="/family/finances/upload" class="btn btn--secondary"
-                >Upload a statement</a
-              >
+            @if (auth.hasAnyRole(['neia-boiz'])) {
+              <a routerLink="/events" class="btn btn--primary">NEIA Boiz events</a>
+            }
+            @if (auth.hasAnyRole(['wife'])) {
+              <a routerLink="/family/finances" class="btn btn--primary">Finances dashboard</a>
             }
           </div>
         }
@@ -61,8 +61,6 @@ import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status
                 </article>
               }
             </div>
-          } @else {
-            <p class="empty">Nothing here yet. Check back soon.</p>
           }
         } @else if (pages.error()) {
           <app-load-error />
