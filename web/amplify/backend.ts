@@ -4,6 +4,7 @@ import { CorsHttpMethod, HttpApi, HttpMethod } from 'aws-cdk-lib/aws-apigatewayv
 import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { AttributeType, BillingMode, Table } from 'aws-cdk-lib/aws-dynamodb';
+import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3';
 import { Rule, Schedule } from 'aws-cdk-lib/aws-events';
 import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
 import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
@@ -111,7 +112,23 @@ const eventsTable = new Table(eventsStack, 'GroupEvents', {
   removalPolicy: RemovalPolicy.RETAIN,
 });
 const eventsLambda = backend.groupEvents.resources.lambda;
+// Comments are their own items; this index lists an event's comments
+eventsTable.addGlobalSecondaryIndex({
+  indexName: 'byEvent',
+  partitionKey: { name: 'eventId', type: AttributeType.STRING },
+  sortKey: { name: 'createdAt', type: AttributeType.STRING },
+});
 eventsTable.grantReadWriteData(eventsLambda);
+// Profile photos: private; the Lambda hands out short-lived signed links
+const avatarBucket = new Bucket(eventsStack, 'MemberAvatars', {
+  blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
+  encryption: BucketEncryption.S3_MANAGED,
+  enforceSSL: true,
+  removalPolicy: RemovalPolicy.RETAIN,
+});
+avatarBucket.grantReadWrite(eventsLambda);
+avatarBucket.grantDelete(eventsLambda);
+backend.groupEvents.addEnvironment('AVATAR_BUCKET', avatarBucket.bucketName);
 backend.groupEvents.addEnvironment('EVENTS_TABLE', eventsTable.tableName);
 // Members are read from the user pool groups, so emails go to their sign-in addresses
 backend.groupEvents.addEnvironment('USER_POOL_ID', userPool.userPoolId);
@@ -143,9 +160,21 @@ httpApi.addRoutes({
   integration: eventsIntegration,
   authorizer,
 });
+// The signed unsubscribe link in emails works without logging in (no authorizer)
+httpApi.addRoutes({
+  path: '/unsubscribe',
+  methods: [HttpMethod.POST],
+  integration: eventsIntegration,
+});
+// Calendar subscriptions: Google/Apple Calendar fetch these without logging in
+httpApi.addRoutes({
+  path: '/calendar/{proxy+}',
+  methods: [HttpMethod.GET],
+  integration: eventsIntegration,
+});
 httpApi.addRoutes({
   path: '/events/{proxy+}',
-  methods: [HttpMethod.GET, HttpMethod.PUT, HttpMethod.POST],
+  methods: [HttpMethod.GET, HttpMethod.PUT, HttpMethod.POST, HttpMethod.DELETE],
   integration: eventsIntegration,
   authorizer,
 });

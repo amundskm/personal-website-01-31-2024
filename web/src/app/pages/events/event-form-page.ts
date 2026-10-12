@@ -27,6 +27,8 @@ import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status
 interface DateRow {
   key: number;
   date: string;
+  /** Optional last day, for a range. */
+  endDate: string;
   startTime: string;
   endTime: string;
 }
@@ -123,7 +125,7 @@ interface DateRow {
               @for (row of dates(); track row.key; let i = $index) {
                 <div class="ev-date-row">
                   <label class="ev-field">
-                    <span>Date</span>
+                    <span>{{ row.endDate ? 'First day' : 'Date' }}</span>
                     <input
                       type="date"
                       required
@@ -132,7 +134,17 @@ interface DateRow {
                     />
                   </label>
                   <label class="ev-field">
-                    <span>Start <small>(optional)</small></span>
+                    <span>Last day <small>(for a range)</small></span>
+                    <input
+                      type="date"
+                      [value]="row.endDate"
+                      [min]="nextDay(row.date)"
+                      [disabled]="!row.date"
+                      (input)="updateDate(row.key, { endDate: $any($event.target).value })"
+                    />
+                  </label>
+                  <label class="ev-field">
+                    <span>{{ row.endDate ? 'Starts' : 'Start' }} <small>(optional)</small></span>
                     <input
                       type="time"
                       [value]="row.startTime"
@@ -140,7 +152,9 @@ interface DateRow {
                     />
                   </label>
                   <label class="ev-field">
-                    <span>End <small>(optional)</small></span>
+                    <span
+                      >{{ row.endDate ? 'Ends (last day)' : 'End' }} <small>(optional)</small></span
+                    >
                     <input
                       type="time"
                       [value]="row.endTime"
@@ -165,7 +179,10 @@ interface DateRow {
                   + Add another date
                 </button>
               }
-              <p class="ev-meta">Times are Central. Leave the start empty for an all-day event.</p>
+              <p class="ev-meta">
+                Times are Central. Add a last day for a weekend or trip. Leave the start time empty
+                for all day.
+              </p>
             </fieldset>
 
             <fieldset class="ev-fieldset">
@@ -277,9 +294,18 @@ export class EventFormPage implements OnInit {
       rows.map((r) => {
         if (r.key !== key) return r;
         const next = { ...r, ...changes };
+        // A range must end after it starts
+        if (next.endDate && next.endDate <= next.date) next.endDate = '';
         return next.startTime ? next : { ...next, endTime: '' };
       }),
     );
+  }
+
+  /** The day after `date`: the earliest last day for a range. */
+  protected nextDay(date: string): string | null {
+    if (!date) return null;
+    const [y, m, d] = date.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
   }
 
   protected toggleReminder(minutes: number, on: boolean): void {
@@ -298,6 +324,7 @@ export class EventFormPage implements OnInit {
         .filter((r) => r.date)
         .map((r): EventDate => ({
           date: r.date,
+          endDate: r.endDate && r.endDate > r.date ? r.endDate : null,
           startTime: r.startTime || null,
           endTime: (r.startTime && r.endTime) || null,
         })),
@@ -342,6 +369,7 @@ export class EventFormPage implements OnInit {
       dates.map((d) => ({
         key: nextKey++,
         date: d.date,
+        endDate: d.endDate ?? '',
         startTime: d.startTime ?? '',
         endTime: d.endTime ?? '',
       })),
@@ -350,4 +378,10 @@ export class EventFormPage implements OnInit {
 }
 
 let nextKey = 0;
-const newRow = (): DateRow => ({ key: nextKey++, date: '', startTime: '', endTime: '' });
+const newRow = (): DateRow => ({
+  key: nextKey++,
+  date: '',
+  endDate: '',
+  startTime: '',
+  endTime: '',
+});

@@ -12,6 +12,7 @@ import {
   type EventsOverview,
   formatEventDate,
   type GroupEvent,
+  lastDay,
   type Rsvp,
 } from '../../core/events/events';
 import { SeoService } from '../../core/seo.service';
@@ -34,7 +35,13 @@ const RSVP_LABELS: Record<Rsvp, string> = { going: 'Going', maybe: 'Maybe', no: 
             <p class="eyebrow">NEIA Boiz</p>
             <h1>Events</h1>
           </div>
-          <a routerLink="new" class="btn btn--primary">New event</a>
+          <div class="button-row">
+            <a routerLink="/profile" fragment="calendar" class="btn btn--text"
+              >Subscribe to calendar</a
+            >
+            <a routerLink="/profile" class="btn btn--secondary">Your profile</a>
+            <a routerLink="new" class="btn btn--primary">New event</a>
+          </div>
         </header>
 
         @if (data.hasValue() && data.value(); as d) {
@@ -135,14 +142,15 @@ export class EventsPage implements OnInit {
   );
   protected readonly upcoming = computed(() =>
     this.confirmed()
-      .filter((e) => e.confirmed!.date >= this.today)
+      .filter((e) => lastDay(e.confirmed!) >= this.today)
       .sort((a, b) => sortKey(a).localeCompare(sortKey(b))),
   );
   protected readonly past = computed(() =>
     this.events()
       .filter(
         (e) =>
-          e.status === 'cancelled' || (e.status === 'confirmed' && e.confirmed!.date < this.today),
+          e.status === 'cancelled' ||
+          (e.status === 'confirmed' && lastDay(e.confirmed!) < this.today),
       )
       .sort((a, b) => sortKey(b).localeCompare(sortKey(a))),
   );

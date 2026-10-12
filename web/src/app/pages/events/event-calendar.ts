@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { formatTime, type GroupEvent } from '../../core/events/events';
+import { daysOf, formatTime, type GroupEvent } from '../../core/events/events';
 
 interface Day {
   date: string;
@@ -145,9 +145,11 @@ export class EventCalendar {
     const byDate = new Map<string, GroupEvent[]>();
     for (const event of this.events()) {
       if (!event.confirmed) continue;
-      const list = byDate.get(event.confirmed.date) ?? [];
-      list.push(event);
-      byDate.set(event.confirmed.date, list);
+      for (const day of daysOf(event.confirmed)) {
+        const list = byDate.get(day) ?? [];
+        list.push(event);
+        byDate.set(day, list);
+      }
     }
     for (const list of byDate.values()) {
       list.sort((a, b) =>

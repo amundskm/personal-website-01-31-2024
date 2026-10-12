@@ -6,6 +6,9 @@
  * `zonedToUtc` turns them into instants for reminders and calendar files.
  */
 
+import type { EventComment } from './comments';
+import type { EmailPrefs } from './profile';
+
 export const DEFAULT_TIME_ZONE = 'America/Chicago';
 
 /** All-day events are treated as starting at this local time for reminders. */
@@ -19,11 +22,41 @@ export type Rsvp = 'going' | 'maybe' | 'no';
 export type EventStatus = 'polling' | 'confirmed' | 'cancelled';
 
 /** A proposed (or the confirmed) date. Times are local `HH:MM`; none = all day. */
+/**
+ * A proposed (or the confirmed) date: one day, or a range of days. Times are
+ * local `HH:MM`; with a range, the start time is on the first day and the end
+ * time on the last. No start time = all day.
+ */
 export interface EventDate {
+  /** The (first) day. */
   date: string;
+  /** The last day of a range; absent for a single day. */
+  endDate?: string | null;
   startTime?: string | null;
   endTime?: string | null;
 }
+
+/** Longest allowed range, in days. */
+export const MAX_RANGE_DAYS = 30;
+
+/** The last day an event happens on. */
+export const lastDay = (when: EventDate) => when.endDate || when.date;
+
+/** Every day (`YYYY-MM-DD`) the event covers, first to last. */
+export function daysOf(when: EventDate): string[] {
+  const days: string[] = [];
+  const [y, m, d] = when.date.split('-').map(Number);
+  const last = lastDay(when);
+  for (let i = 0; i <= MAX_RANGE_DAYS; i++) {
+    const day = new Date(Date.UTC(y, m - 1, d + i)).toISOString().slice(0, 10);
+    if (day > last) break;
+    days.push(day);
+  }
+  return days;
+}
+
+const dayCount = (from: string, to: string) =>
+  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 
 export interface EventOption extends EventDate {
   id: string;
@@ -49,6 +82,8 @@ export interface GroupEvent {
   location: EventLocation | null;
   timeZone: string;
   status: EventStatus;
+  /** What a cancelled event was before, so it can be restored. */
+  cancelledFrom?: Exclude<EventStatus, 'cancelled'> | null;
   createdBy: string;
   createdAt: string;
   options: EventOption[];
@@ -62,20 +97,37 @@ export interface GroupEvent {
 export interface Member {
   id: string;
   name: string;
+  /** Signed, short-lived link to their photo. */
+  avatarUrl?: string | null;
+}
+
+/** The signed-in member, as the API describes them. */
+export interface MeInfo extends Member {
+  hasName: boolean;
+  isAdmin: boolean;
+}
+
+/** GET/PUT /events/profile. */
+export interface ProfileInfo extends MeInfo {
+  email: string;
+  prefs: EmailPrefs;
+  /** Signs this member's calendar subscription URL. */
+  calendarToken: string;
 }
 
 /** What the events list receives. */
 export interface EventsOverview {
-  me: Member & { hasName: boolean; isAdmin: boolean };
+  me: MeInfo;
   members: Member[];
   events: GroupEvent[];
 }
 
 /** What an event page receives. */
 export interface EventDetail {
-  me: Member & { hasName: boolean; isAdmin: boolean };
+  me: MeInfo;
   members: Member[];
   event: GroupEvent;
+  comments: EventComment[];
 }
 
 /** Body of POST /events and PUT /events/{id}. */
@@ -240,6 +292,12 @@ export function validateEventInput(value: unknown): string | null {
     return 'Add between 1 and 20 dates.';
   for (const option of input.options) {
     if (!option || !DATE.test(String(option.date))) return 'Every date needs a day.';
+    if (option.endDate != null && option.endDate !== '') {
+      if (!DATE.test(String(option.endDate))) return 'Invalid end date';
+      if (option.endDate <= option.date) return 'An end date must be after its start date.';
+      if (dayCount(option.date, option.endDate) > MAX_RANGE_DAYS)
+        return `Date ranges can be up to ${MAX_RANGE_DAYS} days.`;
+    }
     for (const time of [option.startTime, option.endTime]) {
       if (time != null && time !== '' && !TIME.test(String(time))) return 'Times must be HH:MM.';
     }
@@ -264,14 +322,39 @@ export function formatTime(time: string): string {
 
 /** "Sat, Jun 1, 2030 · 6:00 PM – 9:00 PM", or "· All day". */
 export function formatEventDate(when: EventDate): string {
-  const day = new Date(`${when.date}T00:00:00`).toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
+  const format = (iso: string, withYear: boolean) =>
+    new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      ...(withYear ? { year: 'numeric' } : {}),
+    });
+  if (when.endDate) {
+    // "Fri, Jul 12, 4:00 PM – Sun, Jul 14, 2030, 11:00 AM", or "… · All days"
+    const sameYear = when.date.slice(0, 4) === when.endDate.slice(0, 4);
+    const first = format(when.date, !sameYear);
+    const last = format(when.endDate, true);
+    if (!when.startTime) return `${first} – ${last} · All days`;
+    return (
+      `${first}, ${formatTime(when.startTime)} – ${last}` +
+      (when.endTime ? `, ${formatTime(when.endTime)}` : '')
+    );
+  }
+  const day = format(when.date, true);
   if (!when.startTime) return `${day} · All day`;
   return `${day} · ${formatTime(when.startTime)}${when.endTime ? ` – ${formatTime(when.endTime)}` : ''}`;
+}
+
+/** A compact label: "Sat, Jun 1" or "Jul 12 – 14" / "Jun 30 – Jul 2". */
+export function shortDateLabel(when: EventDate): string {
+  const md = (iso: string, opts: Intl.DateTimeFormatOptions) =>
+    new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', opts);
+  if (!when.endDate) return md(when.date, { weekday: 'short', month: 'short', day: 'numeric' });
+  const sameMonth = when.date.slice(0, 7) === when.endDate.slice(0, 7);
+  return `${md(when.date, { month: 'short', day: 'numeric' })} – ${md(
+    when.endDate,
+    sameMonth ? { day: 'numeric' } : { month: 'short', day: 'numeric' },
+  )}`;
 }
 
 /** A Google Maps search link for an address or place name. */
@@ -282,47 +365,59 @@ export const mapLink = (location: EventLocation) =>
  * An iCalendar (.ics) file for a confirmed event, with an alarm per reminder,
  * so phones and calendar apps remind people too.
  */
-export function eventIcs(event: GroupEvent, url: string, now = new Date()): string {
-  const when = event.confirmed!;
-  const stamp = (d: Date) =>
-    d
-      .toISOString()
-      .replace(/[-:]/g, '')
-      .replace(/\.\d{3}/, '');
-  const dates: string[] = [];
+/** UTC `YYYYMMDDTHHMMSSZ`, as calendar files and Google links use. */
+const icsStamp = (d: Date) =>
+  d
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d{3}/, '');
+
+/**
+ * When a confirmed event starts and ends: instants for timed events, or
+ * whole days (end exclusive) for all-day ones.
+ */
+function eventSpan(
+  when: EventDate,
+  timeZone: string,
+): { allDay: false; start: Date; end: Date } | { allDay: true; start: string; end: string } {
   if (when.startTime) {
-    const start = zonedToUtc(when.date, when.startTime, event.timeZone);
-    let end = when.endTime
-      ? zonedToUtc(when.date, when.endTime, event.timeZone)
-      : new Date(start.getTime() + DEFAULT_DURATION_MINUTES * 60_000);
-    if (end <= start) end = new Date(end.getTime() + 24 * 60 * 60_000); // ends after midnight
-    dates.push(`DTSTART:${stamp(start)}`, `DTEND:${stamp(end)}`);
-  } else {
-    // All day: DTEND is the (exclusive) next day
-    const [y, m, d] = when.date.split('-').map(Number);
-    const next = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
-    dates.push(
-      `DTSTART;VALUE=DATE:${when.date.replace(/-/g, '')}`,
-      `DTEND;VALUE=DATE:${next.replace(/-/g, '')}`,
-    );
+    const start = zonedToUtc(when.date, when.startTime, timeZone);
+    let end: Date;
+    if (when.endDate) {
+      // A range runs to the end time on its last day (or the end of that day)
+      end = zonedToUtc(when.endDate, when.endTime || '23:59', timeZone);
+    } else {
+      end = when.endTime
+        ? zonedToUtc(when.date, when.endTime, timeZone)
+        : new Date(start.getTime() + DEFAULT_DURATION_MINUTES * 60_000);
+      if (end <= start) end = new Date(end.getTime() + 24 * 60 * 60_000); // ends after midnight
+    }
+    return { allDay: false, start, end };
   }
-  const location = event.location
-    ? [event.location.name, event.location.address].filter(Boolean).join(', ')
-    : '';
-  const lines = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//NEIA Boiz//Events//EN',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
+  const [y, m, d] = lastDay(when).split('-').map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+  return { allDay: true, start: when.date.replace(/-/g, ''), end: next.replace(/-/g, '') };
+}
+
+const locationText = (event: GroupEvent) =>
+  event.location ? [event.location.name, event.location.address].filter(Boolean).join(', ') : '';
+
+/** One VEVENT for a confirmed (or cancelled) event, with an alarm per reminder. */
+function vevent(event: GroupEvent, url: string, now: Date): string[] {
+  const span = eventSpan(event.confirmed!, event.timeZone);
+  const location = locationText(event);
+  return [
     'BEGIN:VEVENT',
     `UID:${event.id}@neiaboiz.com`,
-    `DTSTAMP:${stamp(now)}`,
-    ...dates,
+    `DTSTAMP:${icsStamp(now)}`,
+    ...(span.allDay
+      ? [`DTSTART;VALUE=DATE:${span.start}`, `DTEND;VALUE=DATE:${span.end}`]
+      : [`DTSTART:${icsStamp(span.start)}`, `DTEND:${icsStamp(span.end)}`]),
     `SUMMARY:${escapeIcs(event.title)}`,
     ...(location ? [`LOCATION:${escapeIcs(location)}`] : []),
     `DESCRIPTION:${escapeIcs([event.details, url].filter(Boolean).join('\n\n'))}`,
     `URL:${url}`,
+    `STATUS:${event.status === 'cancelled' ? 'CANCELLED' : 'CONFIRMED'}`,
     ...event.reminders.flatMap((r) => [
       'BEGIN:VALARM',
       'ACTION:DISPLAY',
@@ -331,9 +426,65 @@ export function eventIcs(event: GroupEvent, url: string, now = new Date()): stri
       'END:VALARM',
     ]),
     'END:VEVENT',
-    'END:VCALENDAR',
   ];
-  return lines.map(foldIcsLine).join('\r\n') + '\r\n';
+}
+
+function calendar(lines: string[], extra: string[] = []): string {
+  return (
+    [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//NEIA Boiz//Events//EN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      ...extra,
+      ...lines,
+      'END:VCALENDAR',
+    ]
+      .map(foldIcsLine)
+      .join('\r\n') + '\r\n'
+  );
+}
+
+/**
+ * An iCalendar (.ics) file for a confirmed event, with an alarm per reminder,
+ * so phones and calendar apps remind people too.
+ */
+export function eventIcs(event: GroupEvent, url: string, now = new Date()): string {
+  return calendar(vevent(event, url, now));
+}
+
+/**
+ * The subscribable NEIA Boiz calendar: every confirmed event, plus cancelled
+ * ones marked CANCELLED so subscribed calendars drop them. Polls are left out.
+ */
+export function calendarFeedIcs(events: GroupEvent[], siteUrl: string, now = new Date()): string {
+  const lines = events
+    .filter((e) => e.confirmed && (e.status === 'confirmed' || e.status === 'cancelled'))
+    .flatMap((e) => vevent(e, `${siteUrl}/events/${e.id}`, now));
+  return calendar(lines, [
+    'X-WR-CALNAME:NEIA Boiz',
+    'X-WR-CALDESC:Events from neiaboiz.com',
+    `X-WR-TIMEZONE:${DEFAULT_TIME_ZONE}`,
+    'REFRESH-INTERVAL;VALUE=DURATION:PT1H',
+    'X-PUBLISHED-TTL:PT1H',
+  ]);
+}
+
+/** A link that opens Google Calendar with the event filled in. */
+export function googleCalendarUrl(event: GroupEvent, url: string): string {
+  const span = eventSpan(event.confirmed!, event.timeZone);
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: event.title,
+    dates: span.allDay
+      ? `${span.start}/${span.end}`
+      : `${icsStamp(span.start)}/${icsStamp(span.end)}`,
+    details: [event.details, url].filter(Boolean).join('\n\n'),
+    ...(event.location ? { location: locationText(event) } : {}),
+    ctz: event.timeZone,
+  });
+  return `https://calendar.google.com/calendar/render?${params}`;
 }
 
 function escapeIcs(text: string): string {
@@ -356,4 +507,11 @@ function foldIcsLine(line: string): string {
   }
   chunks.push(rest);
   return chunks.join('\r\n ');
+}
+
+/** The status a cancelled event goes back to: what it was, else confirmed if it has a date. */
+export function restoredStatus(
+  event: Pick<GroupEvent, 'cancelledFrom' | 'confirmed'>,
+): Exclude<EventStatus, 'cancelled'> {
+  return event.cancelledFrom ?? (event.confirmed ? 'confirmed' : 'polling');
 }
