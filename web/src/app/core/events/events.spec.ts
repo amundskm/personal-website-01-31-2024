@@ -6,6 +6,9 @@ import {
   shortDateLabel,
   bestOptionIds,
   canManage,
+  canSee,
+  invitedMembers,
+  isInvited,
   dueReminders,
   eventIcs,
   formatEventDate,
@@ -136,6 +139,8 @@ describe('validateEventInput', () => {
     options: [{ date: '2030-06-01', startTime: '18:00', endTime: null }],
     confirmNow: true,
     reminderOffsets: [1440],
+    invitees: null,
+    inviteesOnly: false,
   };
 
   it('accepts a valid event', () => {
@@ -165,6 +170,12 @@ describe('validateEventInput', () => {
       validateEventInput({ ...valid, options: [{ date: '2030-06-01' }, { date: '2030-06-08' }] }),
     ).toMatch(/exactly one/);
     expect(validateEventInput({ ...valid, reminderOffsets: [-5] })).toMatch(/reminders/);
+    expect(validateEventInput({ ...valid, invitees: [] })).toMatch(/at least one/);
+    expect(validateEventInput({ ...valid, invitees: [5] })).toMatch(/invitees/);
+    expect(validateEventInput({ ...valid, invitees: ['bob'], inviteesOnly: 'yes' })).toMatch(
+      /visibility/,
+    );
+    expect(validateEventInput({ ...valid, invitees: ['bob'], inviteesOnly: true })).toBeNull();
   });
 });
 
@@ -248,6 +259,8 @@ describe('date ranges', () => {
       options: [{ date: '2030-07-12', endDate }],
       confirmNow: true,
       reminderOffsets: [],
+      invitees: null,
+      inviteesOnly: false,
     });
     expect(validateEventInput(input('2030-07-14'))).toBeNull();
     expect(validateEventInput(input('2030-07-12'))).toMatch(/after/);
@@ -305,5 +318,31 @@ describe('calendar links', () => {
     expect(feed).toContain('STATUS:CANCELLED');
     expect(feed).toContain('X-WR-CALNAME:NEIA Boiz');
     expect(feed).toContain('URL:https://example.com/events/on');
+  });
+});
+
+describe('invitations', () => {
+  const members = [{ id: 'alice' }, { id: 'bob' }, { id: 'carol' }];
+
+  it('invites everyone when there is no list', () => {
+    const open = event({ invitees: null });
+    expect(isInvited(open, 'carol')).toBe(true);
+    expect(invitedMembers(open, members)).toEqual(members);
+  });
+
+  it('invites only the list plus the organizer', () => {
+    const picked = event({ invitees: ['bob'] }); // created by alice
+    expect(isInvited(picked, 'alice')).toBe(true);
+    expect(isInvited(picked, 'bob')).toBe(true);
+    expect(isInvited(picked, 'carol')).toBe(false);
+    expect(invitedMembers(picked, members).map((m) => m.id)).toEqual(['alice', 'bob']);
+  });
+
+  it('hides invite-only events from everyone else except admins', () => {
+    const hidden = event({ invitees: ['bob'], inviteesOnly: true });
+    expect(canSee(hidden, 'bob', false)).toBe(true);
+    expect(canSee(hidden, 'carol', false)).toBe(false);
+    expect(canSee(hidden, 'carol', true)).toBe(true);
+    expect(canSee({ ...hidden, inviteesOnly: false }, 'carol', false)).toBe(true);
   });
 });

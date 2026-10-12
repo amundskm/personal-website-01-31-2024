@@ -1,4 +1,4 @@
-import { renderEmail } from '../../../../amplify/shared/email-layout';
+import { displayUrl, renderEmail } from '../../../../amplify/shared/email-layout';
 import { commentEmail, eventEmail } from './event-email';
 import type { GroupEvent } from './events';
 
@@ -115,5 +115,24 @@ describe('restored and comment emails', () => {
     expect(reply.subject).toBe('Carol replied to your comment on Lake <weekend>');
     expect(reply.text).toContain('because you commented on this event');
     expect(reply.unsubscribeUrl).toBeUndefined();
+  });
+});
+
+describe('links to the site', () => {
+  it('shows the events page address under the button in every event and comment email', () => {
+    for (const email of [
+      eventEmail('poll', { ...event, status: 'polling', confirmed: null }, url),
+      eventEmail('reminder', event, url, { reminderOffset: 10080 }),
+      commentEmail('reply', event, { body: 'Hi' }, 'Bob', url),
+    ]) {
+      expect(email.text).toContain('All NEIA Boiz events: https://neiaboiz.com/events');
+      expect(email.html).toContain('href="https://neiaboiz.com/events"');
+      expect(email.html).toContain('>neiaboiz.com/events</a>');
+    }
+  });
+
+  it('displays addresses without the scheme', () => {
+    expect(displayUrl('https://neiaboiz.com/login')).toBe('neiaboiz.com/login');
+    expect(displayUrl('https://neiaboiz.com/')).toBe('neiaboiz.com');
   });
 });

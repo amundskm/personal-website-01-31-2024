@@ -12,6 +12,8 @@ import {
   type EventsOverview,
   formatEventDate,
   type GroupEvent,
+  invitedMembers,
+  isInvited,
   lastDay,
   type Rsvp,
 } from '../../core/events/events';
@@ -58,9 +60,12 @@ const RSVP_LABELS: Record<Rsvp, string> = { going: 'Going', maybe: 'Maybe', no: 
                     <strong>{{ event.title }}</strong>
                     <span class="ev-meta">
                       {{ event.options.length }} dates proposed · {{ voterCount(event) }} of
-                      {{ d.members.length }} voted
+                      {{ invitedCount(event, d.members) }} voted
                     </span>
-                    @if (!hasVoted(event)) {
+                    @if (event.invitees) {
+                      <span class="ev-invite-badge">Invite only</span>
+                    }
+                    @if (invited(event) && !hasVoted(event)) {
                       <span class="ev-badge">You haven't voted</span>
                     }
                   </a>
@@ -82,8 +87,10 @@ const RSVP_LABELS: Record<Rsvp, string> = { going: 'Going', maybe: 'Maybe', no: 
                       {{ goingCount(event) }} going
                       @if (myRsvp(event); as r) {
                         · you: {{ rsvpLabel(r) }}
-                      } @else {
+                      } @else if (invited(event)) {
                         · <span class="ev-badge">RSVP</span>
+                      } @else {
+                        · not invited
                       }
                     </span>
                   </a>
@@ -159,6 +166,9 @@ export class EventsPage implements OnInit {
   protected readonly rsvpLabel = (rsvp: Rsvp) => RSVP_LABELS[rsvp];
   protected readonly voterCount = (event: GroupEvent) => Object.keys(event.votes).length;
   protected readonly hasVoted = (event: GroupEvent) => !!event.votes[this.myId() ?? ''];
+  protected readonly invited = (event: GroupEvent) => isInvited(event, this.myId() ?? '');
+  protected readonly invitedCount = (event: GroupEvent, members: { id: string }[]) =>
+    invitedMembers(event, members).length;
   protected readonly myRsvp = (event: GroupEvent) => event.rsvps[this.myId() ?? ''] ?? null;
   protected readonly goingCount = (event: GroupEvent) =>
     Object.values(event.rsvps).filter((r) => r === 'going').length;

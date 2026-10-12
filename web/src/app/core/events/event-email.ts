@@ -41,6 +41,9 @@ function footerText(footer: string, links?: RecipientLinks): string[] {
 
 const FOOTER = "You're getting this because you're in NEIA Boiz on neiaboiz.com.";
 
+/** Every event email also links to the site's events page. */
+const EVENTS_LINK = { label: 'All NEIA Boiz events:', href: `${SITE_URL}/events` };
+
 /** The email sent to members about an event, in the site's style. */
 export function eventEmail(
   kind: EmailKind,
@@ -126,6 +129,7 @@ export function eventEmail(
     details,
     note: note || undefined,
     button: { href: buttonUrl, text: c.button },
+    siteLink: EVENTS_LINK,
     footer: FOOTER,
     footerLinks: footerLinks(extra.links),
   });
@@ -143,6 +147,7 @@ export function eventEmail(
     ...(note ? ['', note] : []),
     '',
     `${c.button}: ${buttonUrl}`,
+    `${EVENTS_LINK.label} ${EVENTS_LINK.href}`,
     '',
     ...footerText(FOOTER, extra.links),
   ].join('\n');
@@ -197,6 +202,7 @@ export function commentEmail(
     paragraphs: [c.intro],
     note: comment.body,
     button: { href: url, text: 'View & reply' },
+    siteLink: EVENTS_LINK,
     footer: c.footer,
     footerLinks: footerLinks(links),
   });
@@ -211,6 +217,7 @@ export function commentEmail(
     comment.body,
     '',
     `View & reply: ${url}`,
+    `${EVENTS_LINK.label} ${EVENTS_LINK.href}`,
     '',
     ...footerText(c.footer, links),
   ].join('\n');

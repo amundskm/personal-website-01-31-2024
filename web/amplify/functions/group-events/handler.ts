@@ -55,6 +55,7 @@ import {
 import {
   calendarFeedIcs,
   canManage,
+  canSee,
   DEFAULT_TIME_ZONE,
   dueReminders,
   restoredStatus,
@@ -62,6 +63,7 @@ import {
   type EventInput,
   type EventOption,
   type GroupEvent,
+  isInvited,
   type Member,
   type Reminder,
   type Rsvp,
@@ -196,13 +198,15 @@ async function overview(caller: Caller) {
   return {
     me: await me(caller, members),
     members: await publicMembers(members),
-    events: events.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    events: events
+      .filter((e) => canSee(e, caller.id, caller.isAdmin))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
   };
 }
 
 async function detail(caller: Caller, id: string): Promise<Result> {
   const [event, members, comments] = await Promise.all([
-    loadEvent(id),
+    loadVisibleEvent(caller, id),
     loadMembers(),
     loadComments(id),
   ]);
@@ -228,6 +232,10 @@ async function create(caller: Caller, body: Record<string, unknown>): Promise<Re
   const options = input.options.map((date) => ({ id: newId(), ...cleanDate(date) }));
   const confirmed = input.confirmNow ? cleanDate(input.options[0]) : null;
   const reminders = reminderList(input.reminderOffsets, []);
+  const invitees = await cleanInvitees(input.invitees, caller.id);
+  if (invitees && !invitees.length) {
+    return json(400, { message: 'Pick at least one person to invite, or invite everyone.' });
+  }
   const event: GroupEvent = {
     id: newId(),
     title: input.title.trim(),
@@ -244,6 +252,8 @@ async function create(caller: Caller, body: Record<string, unknown>): Promise<Re
     reminders: confirmed
       ? skipPastReminders(reminders, confirmed, DEFAULT_TIME_ZONE, now)
       : reminders,
+    invitees,
+    inviteesOnly: !!invitees && input.inviteesOnly,
   };
   await db.send(
     new PutCommand({ TableName: TABLE, Item: { pk: eventKey(event.id), type: 'event', ...event } }),
@@ -253,7 +263,7 @@ async function create(caller: Caller, body: Record<string, unknown>): Promise<Re
 }
 
 async function edit(caller: Caller, id: string, body: Record<string, unknown>): Promise<Result> {
-  const existing = await loadEvent(id);
+  const existing = await loadVisibleEvent(caller, id);
   if (!existing) return json(404, { message: 'Event not found' });
   if (!canManage(existing, caller.id, caller.isAdmin)) return forbidden();
   if (existing.status === 'cancelled') return json(409, { message: 'This event was cancelled.' });
@@ -274,6 +284,11 @@ async function edit(caller: Caller, id: string, body: Record<string, unknown>): 
     !!existing.confirmed && !!confirmed && !sameDate(existing.confirmed, confirmed);
   const newlyConfirmed = existing.status === 'polling' && input.confirmNow;
 
+  const invitees = await cleanInvitees(input.invitees, existing.createdBy);
+  if (invitees && !invitees.length) {
+    return json(400, { message: 'Pick at least one person to invite, or invite everyone.' });
+  }
+
   let reminders = reminderList(input.reminderOffsets, dateChanged ? [] : existing.reminders);
   if (confirmed && (dateChanged || newlyConfirmed)) {
     reminders = skipPastReminders(reminders, confirmed, existing.timeZone, now);
@@ -287,13 +302,15 @@ async function edit(caller: Caller, id: string, body: Record<string, unknown>): 
     confirmed,
     status: confirmed ? 'confirmed' : 'polling',
     reminders,
+    invitees,
+    inviteesOnly: !!invitees && input.inviteesOnly,
   };
   await db.send(
     new UpdateCommand({
       TableName: TABLE,
       Key: { pk: eventKey(id) },
       UpdateExpression:
-        'SET title = :title, details = :details, #location = :location, #options = :options, confirmed = :confirmed, #status = :status, reminders = :reminders',
+        'SET title = :title, details = :details, #location = :location, #options = :options, confirmed = :confirmed, #status = :status, reminders = :reminders, invitees = :invitees, inviteesOnly = :inviteesOnly',
       ConditionExpression: 'attribute_exists(pk) AND #status <> :cancelled',
       ExpressionAttributeNames: {
         '#location': 'location',
@@ -308,20 +325,39 @@ async function edit(caller: Caller, id: string, body: Record<string, unknown>): 
         ':confirmed': updated.confirmed,
         ':status': updated.status,
         ':reminders': updated.reminders,
+        ':invitees': updated.invitees,
+        ':inviteesOnly': updated.inviteesOnly,
         ':cancelled': 'cancelled',
       },
     }),
   );
   if (newlyConfirmed) await notify('confirmed', updated, caller);
   else if (dateChanged) await notify('updated', updated, caller);
+  else {
+    // People added to the list get the invitation they missed
+    const members = await loadMembers();
+    const added = members
+      .filter((m) => isInvited(updated, m.id) && !isInvited(existing, m.id))
+      .map((m) => m.id);
+    if (added.length) {
+      await notify(
+        updated.status === 'polling' ? 'poll' : 'confirmed',
+        updated,
+        caller,
+        undefined,
+        new Set(added),
+      );
+    }
+  }
   return json(200, updated);
 }
 
 async function vote(caller: Caller, id: string, body: Record<string, unknown>): Promise<Result> {
-  const event = await loadEvent(id);
+  const event = await loadVisibleEvent(caller, id);
   if (!event) return json(404, { message: 'Event not found' });
   if (event.status !== 'polling')
     return json(409, { message: 'Voting has closed for this event.' });
+  if (!isInvited(event, caller.id)) return notInvited();
   const raw = (body['votes'] ?? {}) as Record<string, unknown>;
   const votes: Record<string, Vote> = {};
   for (const option of event.options) {
@@ -346,9 +382,10 @@ async function rsvp(caller: Caller, id: string, body: Record<string, unknown>): 
   if (answer !== 'going' && answer !== 'maybe' && answer !== 'no') {
     return json(400, { message: 'Invalid RSVP' });
   }
-  const event = await loadEvent(id);
+  const event = await loadVisibleEvent(caller, id);
   if (!event) return json(404, { message: 'Event not found' });
   if (event.status !== 'confirmed') return json(409, { message: "This event isn't confirmed." });
+  if (!isInvited(event, caller.id)) return notInvited();
   await db.send(
     new UpdateCommand({
       TableName: TABLE,
@@ -362,7 +399,7 @@ async function rsvp(caller: Caller, id: string, body: Record<string, unknown>): 
 }
 
 async function confirm(caller: Caller, id: string, body: Record<string, unknown>): Promise<Result> {
-  const event = await loadEvent(id);
+  const event = await loadVisibleEvent(caller, id);
   if (!event) return json(404, { message: 'Event not found' });
   if (!canManage(event, caller.id, caller.isAdmin)) return forbidden();
   if (event.status !== 'polling') return json(409, { message: 'This event is no longer polling.' });
@@ -405,7 +442,7 @@ async function confirm(caller: Caller, id: string, body: Record<string, unknown>
 }
 
 async function cancel(caller: Caller, id: string): Promise<Result> {
-  const event = await loadEvent(id);
+  const event = await loadVisibleEvent(caller, id);
   if (!event) return json(404, { message: 'Event not found' });
   if (!canManage(event, caller.id, caller.isAdmin)) return forbidden();
   if (event.status === 'cancelled') return json(200, event);
@@ -429,7 +466,7 @@ async function cancel(caller: Caller, id: string): Promise<Result> {
  * With notify, everyone who wants event updates gets a "back on" email.
  */
 async function restore(caller: Caller, id: string, body: Record<string, unknown>): Promise<Result> {
-  const event = await loadEvent(id);
+  const event = await loadVisibleEvent(caller, id);
   if (!event) return json(404, { message: 'Event not found' });
   if (!canManage(event, caller.id, caller.isAdmin)) return forbidden();
   if (event.status !== 'cancelled') return json(409, { message: "This event isn't cancelled." });
@@ -610,7 +647,10 @@ async function calendarFeed(path: string): Promise<Result> {
       'Content-Disposition': 'inline; filename="neia-boiz.ics"',
       'Cache-Control': 'private, max-age=900',
     },
-    body: calendarFeedIcs(events, env.SITE_URL),
+    body: calendarFeedIcs(
+      events.filter((e) => isInvited(e, memberId)),
+      env.SITE_URL,
+    ),
   };
 }
 
@@ -653,7 +693,7 @@ async function addComment(
   const error = validateCommentInput(body);
   if (error) return json(400, { message: error });
   const input = body as unknown as CommentInput;
-  const event = await loadEvent(eventId);
+  const event = await loadVisibleEvent(caller, eventId);
   if (!event) return json(404, { message: 'Event not found' });
 
   let parent: StoredComment | null = null;
@@ -704,7 +744,10 @@ async function addComment(
 
 /** Soft delete: the text goes, the comment stays as a placeholder for its replies. */
 async function deleteComment(caller: Caller, eventId: string, commentId: string): Promise<Result> {
-  const [event, comment] = await Promise.all([loadEvent(eventId), loadComment(commentId)]);
+  const [event, comment] = await Promise.all([
+    loadVisibleEvent(caller, eventId),
+    loadComment(commentId),
+  ]);
   if (!event || !comment || comment.eventId !== eventId)
     return json(404, { message: 'Comment not found' });
   if (comment.authorId !== caller.id && !canManage(event, caller.id, caller.isAdmin)) {
@@ -731,6 +774,7 @@ async function react(
   if (!isReactionKey(reaction) || typeof body['on'] !== 'boolean') {
     return json(400, { message: 'Invalid reaction' });
   }
+  if (!(await loadVisibleEvent(caller, eventId))) return json(404, { message: 'Event not found' });
   try {
     // A string set per reaction: ADD/DELETE are atomic, so simultaneous reactions don't clash
     await db.send(
@@ -766,7 +810,10 @@ async function setStatus(
   if (status !== 'open' && status !== 'accepted' && status !== 'declined') {
     return json(400, { message: 'Invalid status' });
   }
-  const [event, comment] = await Promise.all([loadEvent(eventId), loadComment(commentId)]);
+  const [event, comment] = await Promise.all([
+    loadVisibleEvent(caller, eventId),
+    loadComment(commentId),
+  ]);
   if (!event || !comment || comment.eventId !== eventId || comment.kind !== 'suggestion') {
     return json(404, { message: 'Suggestion not found' });
   }
@@ -826,12 +873,16 @@ async function notify(
   event: GroupEvent,
   actor: Caller | null,
   reminderOffset?: number,
+  /** Only these members (e.g. people just added to the invite list). */
+  only?: Set<string>,
 ) {
   const members = await loadMembers(true);
   const by = actor ? members.find((m) => m.id === actor.id)?.name : undefined;
   const recipients = members.filter(
     (m) =>
       m.id !== actor?.id &&
+      isInvited(event, m.id) &&
+      (!only || only.has(m.id)) &&
       wantsEmail(m.prefs, kind) &&
       !(kind === 'reminder' && event.rsvps[m.id] === 'no'),
   );
@@ -925,6 +976,12 @@ function toComment(item: Record<string, unknown>): EventComment {
     status: (item['status'] as SuggestionStatus | null) ?? null,
     reactions,
   };
+}
+
+/** The event if the caller may see it; a hidden event looks like a missing one. */
+async function loadVisibleEvent(caller: Caller, id: string): Promise<GroupEvent | null> {
+  const event = await loadEvent(id);
+  return event && canSee(event, caller.id, caller.isAdmin) ? event : null;
 }
 
 async function loadEvent(id: string): Promise<GroupEvent | null> {
@@ -1062,6 +1119,19 @@ const sameDate = (a: EventDate, b: EventDate) =>
   (a.startTime ?? '') === (b.startTime ?? '') &&
   (a.endTime ?? '') === (b.endTime ?? '');
 
+/**
+ * The invite list as stored: current members only, without duplicates or the
+ * organizer (who's always invited). Null means everyone.
+ */
+async function cleanInvitees(
+  invitees: string[] | null,
+  organizer: string,
+): Promise<string[] | null> {
+  if (!invitees) return null;
+  const members = new Set((await loadMembers()).map((m) => m.id));
+  return [...new Set(invitees)].filter((id) => id !== organizer && members.has(id));
+}
+
 function cleanLocation(location: EventInput['location']): GroupEvent['location'] {
   const name = location?.name?.trim();
   if (!name) return null;
@@ -1089,3 +1159,4 @@ function parseBody(body: string | undefined): Record<string, unknown> {
 }
 
 const forbidden = () => json(403, { message: 'Only the organizer can change this event.' });
+const notInvited = () => json(403, { message: "You're not invited to this one." });

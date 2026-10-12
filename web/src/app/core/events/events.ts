@@ -92,6 +92,10 @@ export interface GroupEvent {
   confirmed: EventDate | null;
   rsvps: Record<string, Rsvp>;
   reminders: Reminder[];
+  /** Invited member ids; null or missing = everyone in NEIA Boiz. The organizer is always invited. */
+  invitees?: string[] | null;
+  /** With invitees: hide the event from members who aren't invited. */
+  inviteesOnly?: boolean;
 }
 
 export interface Member {
@@ -139,7 +143,14 @@ export interface EventInput {
   options: EventDate[];
   confirmNow: boolean;
   reminderOffsets: number[];
+  /** Null = everyone; otherwise the member ids to invite. */
+  invitees: string[] | null;
+  /** With invitees: only they (plus the organizer and admins) can see it. */
+  inviteesOnly: boolean;
 }
+
+/** Most people a single event can invite individually. */
+export const MAX_INVITEES = 200;
 
 /** Choices offered on the event form. */
 export const REMINDER_PRESETS: { minutes: number; label: string }[] = [
@@ -163,6 +174,34 @@ export function reminderLabel(minutes: number): string {
 }
 
 /** Whether `memberId` may edit, confirm or cancel the event. */
+/** Whether the event is for everyone, or a chosen list. */
+export const isForEveryone = (event: Pick<GroupEvent, 'invitees'>) => !event.invitees;
+
+/** Whether `memberId` is invited: everyone is, unless there's a list (the organizer always is). */
+export function isInvited(
+  event: Pick<GroupEvent, 'invitees' | 'createdBy'>,
+  memberId: string,
+): boolean {
+  return !event.invitees || event.createdBy === memberId || event.invitees.includes(memberId);
+}
+
+/** Whether `memberId` can see the event at all. */
+export function canSee(
+  event: Pick<GroupEvent, 'invitees' | 'inviteesOnly' | 'createdBy'>,
+  memberId: string,
+  isAdmin: boolean,
+): boolean {
+  return isAdmin || !event.inviteesOnly || isInvited(event, memberId);
+}
+
+/** The members who are invited, in the given order. */
+export function invitedMembers<T extends { id: string }>(
+  event: Pick<GroupEvent, 'invitees' | 'createdBy'>,
+  members: T[],
+): T[] {
+  return members.filter((m) => isInvited(event, m.id));
+}
+
 export const canManage = (
   event: Pick<GroupEvent, 'createdBy'>,
   memberId: string,
@@ -303,6 +342,16 @@ export function validateEventInput(value: unknown): string | null {
     }
     if (option.endTime && !option.startTime) return 'An end time needs a start time.';
   }
+  if (input.invitees !== null) {
+    if (
+      !Array.isArray(input.invitees) ||
+      input.invitees.length > MAX_INVITEES ||
+      !input.invitees.every((id) => typeof id === 'string' && id.length <= 100)
+    )
+      return 'Invalid invitees';
+    if (!input.invitees.length) return 'Pick at least one person to invite, or invite everyone.';
+  }
+  if (typeof input.inviteesOnly !== 'boolean') return 'Invalid visibility';
   if (typeof input.confirmNow !== 'boolean') return 'Invalid confirmNow';
   if (input.confirmNow && input.options.length !== 1) return 'A fixed date needs exactly one date.';
   if (
