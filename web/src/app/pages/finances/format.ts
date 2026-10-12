@@ -22,6 +22,10 @@ export const formatMonth = (month: string) =>
 export const formatShortMonth = (month: string) =>
   parseDate(`${month}-01`).toLocaleDateString('en-US', { month: 'short' });
 
+/** `2030-01-02` → "Jan 2". */
+export const formatDay = (iso: string) =>
+  parseDate(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
 /** `2030-01-02`, `2030-02-01` → "Jan 2 – Feb 1". */
 export const formatPeriod = (from: string, to: string) =>
   [from, to]

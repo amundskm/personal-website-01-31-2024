@@ -14,6 +14,8 @@ import { hasAnyRole } from '../../../src/app/core/auth/roles';
 import {
   type FinancesAdminData,
   type FinancesDashboard,
+  type LineItem,
+  monthLineItems,
   type NewRule,
   type PlanCategory,
   type SpendingPlan,
@@ -35,6 +37,7 @@ const sanity = sanityClient(env.SANITY_DATASET, env.SANITY_WRITE_TOKEN);
 
 /**
  * GET    /finances                  (wife)  → plan budgets + monthly totals, no transactions or rules
+ * GET    /finances/months/{month}  (wife)  → that month's line items (no payments), oldest first
  * GET    /finances/admin            (admin) → full plan incl. merchant patterns + uploaded statements
  * PUT    /finances/statements/{id}  (admin) → save (or replace) a statement; body { statement, newRules }
  * DELETE /finances/statements/{id}  (admin) → remove an uploaded statement
@@ -53,6 +56,13 @@ export const handler = async (
       case 'GET /finances':
         if (!hasAnyRole(groups, ['wife'])) return forbidden();
         return json(200, await dashboard());
+
+      case 'GET /finances/months/{month}': {
+        if (!hasAnyRole(groups, ['wife'])) return forbidden();
+        const month = event.pathParameters?.['month'] ?? '';
+        if (!/^\d{4}-\d{2}$/.test(month)) return json(400, { message: 'Invalid month' });
+        return json(200, await lineItems(month));
+      }
 
       case 'GET /finances/admin':
         if (!isAdmin) return forbidden();
@@ -98,6 +108,11 @@ async function dashboard(): Promise<FinancesDashboard> {
     stages: plan.stages,
     months: summarizeMonths(statements, plan),
   };
+}
+
+async function lineItems(month: string): Promise<LineItem[]> {
+  const [plan, statements] = await Promise.all([loadPlan(), loadStatements()]);
+  return monthLineItems(statements, plan, month);
 }
 
 async function adminData(): Promise<FinancesAdminData> {

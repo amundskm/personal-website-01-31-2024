@@ -157,3 +157,78 @@ tr.is-over .bar span {
     font-weight: 700;
   }
 }
+
+// Category rows open to show their line items
+.row-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--color-arcane-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+.chevron {
+  flex: none;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform var(--transition);
+
+  .is-open & {
+    transform: rotate(45deg);
+  }
+}
+
+.fin-table .line-items > td {
+  padding: 0 0 var(--space-3) var(--space-5);
+  text-align: left;
+}
+
+.items {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+
+  th,
+  td {
+    padding: var(--space-1) var(--space-2);
+    border-bottom: 1px dashed var(--color-border);
+  }
+
+  td:first-child {
+    width: 4.5rem;
+    color: var(--color-muted);
+    white-space: nowrap;
+  }
+
+  th {
+    font-weight: 400;
+    text-align: left;
+    word-break: break-word;
+  }
+
+  .is-credit td:last-child {
+    color: var(--color-arcane);
+  }
+}
+
+.card {
+  margin-left: var(--space-2);
+  color: var(--color-muted);
+}

@@ -1,5 +1,6 @@
 import {
   matchCategory,
+  monthLineItems,
   monthWindow,
   type SpendingPlan,
   type Statement,
@@ -188,5 +189,76 @@ describe('targetForMonth', () => {
     expect(targetForMonth(plan.stages, '2025-12')).toBeNull();
     expect(targetForMonth(plan.stages, '2026-02')).toBe(900);
     expect(targetForMonth(plan.stages, '2026-03')).toBe(700);
+  });
+});
+
+describe('monthLineItems', () => {
+  it("lists a month's countable lines, oldest first, adding up to the summary", () => {
+    const statements = [
+      statement({
+        transactions: [
+          {
+            date: '2025-12-09',
+            description: 'B',
+            amountCents: 2500,
+            kind: 'purchase',
+            categoryKey: 'gone',
+          },
+          {
+            date: '2025-12-06',
+            description: 'A',
+            amountCents: 30000,
+            kind: 'purchase',
+            categoryKey: 'food',
+          },
+          {
+            date: '2025-12-08',
+            description: 'PAY',
+            amountCents: -90000,
+            kind: 'payment',
+            categoryKey: null,
+          },
+          {
+            date: '2025-12-07',
+            description: 'R',
+            amountCents: -5000,
+            kind: 'credit',
+            categoryKey: 'food',
+          },
+        ],
+        friendRepayment: { amountCents: 4000, categoryKey: 'food' },
+      }),
+      statement({
+        id: '1234_2026-02-04',
+        closingDate: '2026-02-04',
+        transactions: [
+          {
+            date: '2026-01-10',
+            description: 'OTHER MONTH',
+            amountCents: 100,
+            kind: 'purchase',
+            categoryKey: 'food',
+          },
+        ],
+      }),
+    ];
+
+    const items = monthLineItems(statements, plan, '2026-01');
+    expect(items.map((i) => [i.date, i.description, i.amountCents, i.kind, i.categoryKey])).toEqual(
+      [
+        ['2025-12-06', 'A', 30000, 'purchase', 'food'],
+        ['2025-12-07', 'R', -5000, 'credit', 'food'],
+        ['2025-12-09', 'B', 2500, 'purchase', UNCATEGORIZED],
+        ['2026-01-04', 'Repaid by friends', -4000, 'repayment', 'food'],
+      ],
+    );
+    expect(items.every((i) => i.last4 === '1234')).toBe(true);
+
+    // Per category, the lines add up to the month summary
+    const [summary] = summarizeMonths(statements.slice(0, 1), plan);
+    for (const [key, cents] of Object.entries(summary.byCategory)) {
+      const sum = items.filter((i) => i.categoryKey === key).reduce((t, i) => t + i.amountCents, 0);
+      expect(sum).toBe(cents);
+    }
   });
 });
