@@ -7,7 +7,8 @@ applications:
       phases:
         build:
           commands:
-            - nvm install 24 && nvm use 24
+            # Skip the build image's default global packages (old Amplify CLI, Vue 2, …): unused, slow and noisy
+            - nvm install 24 --skip-default-packages && nvm use 24
             # npm workspaces: install from the repo root
             - (cd .. && npm ci)
             # Deploys the Amplify Gen 2 backend (web/amplify: Cognito + members API) and
