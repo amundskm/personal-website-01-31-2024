@@ -238,7 +238,9 @@ export class ProfilePage implements OnInit {
         this.feed.set({
           https,
           webcal,
-          google: `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}`,
+          // Google fetches webcal:// links over plain http://, which the API doesn't
+          // answer, so the subscription stays empty. Give Google the https:// link.
+          google: `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(https)}`,
         });
       });
     });
