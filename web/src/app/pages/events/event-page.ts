@@ -509,6 +509,16 @@ export class EventPage {
     ];
 
   constructor() {
+    // Coming from the form: report any files that didn't upload
+    const failed = (history.state as { failedUploads?: string[] } | null)?.failedUploads;
+    if (failed?.length) {
+      this.message.set({
+        text: `The event was saved, but ${failed.join(', ')} didn't upload. Add ${
+          failed.length === 1 ? 'it' : 'them'
+        } again below.`,
+        error: true,
+      });
+    }
     const tick = setInterval(() => this.now.set(new Date()), 60_000);
 
     // Pick up other people's comments, votes and RSVPs while the page is open:

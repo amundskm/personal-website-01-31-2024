@@ -58,7 +58,10 @@ const RSVP_LABELS: Record<Rsvp, string> = { going: 'Going', maybe: 'Maybe', no: 
               <article class="ev-card">
                 <h2>Open polls</h2>
                 @for (event of polls(); track event.id) {
-                  <a class="ev-item" [routerLink]="[event.id]">
+                  <a class="ev-item" [class.has-thumb]="event.image?.url" [routerLink]="[event.id]">
+                    @if (event.image?.url) {
+                      <img class="ev-thumb" [src]="event.image!.url" alt="" loading="lazy" />
+                    }
                     <strong>{{ event.title }}</strong>
                     <span class="ev-meta">
                       {{ event.options.length }} dates proposed · {{ voterCount(event) }} of
@@ -121,7 +124,10 @@ const RSVP_LABELS: Record<Rsvp, string> = { going: 'Going', maybe: 'Maybe', no: 
             <details class="ev-past">
               <summary>Past and cancelled ({{ past().length }})</summary>
               @for (event of past(); track event.id) {
-                <a class="ev-item" [routerLink]="[event.id]">
+                <a class="ev-item" [class.has-thumb]="event.image?.url" [routerLink]="[event.id]">
+                  @if (event.image?.url) {
+                    <img class="ev-thumb" [src]="event.image!.url" alt="" loading="lazy" />
+                  }
                   <strong>{{ event.title }}</strong>
                   <span class="ev-meta">
                     {{ event.status === 'cancelled' ? 'Cancelled' : when(event) }}
