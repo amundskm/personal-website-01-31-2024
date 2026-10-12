@@ -9,6 +9,7 @@ import {
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import {
+  canJoin,
   type EventsOverview,
   formatDeadline,
   formatEventDate,
@@ -104,7 +105,7 @@ const RSVP_LABELS: Record<Rsvp, string> = { going: 'Going', maybe: 'Maybe', no: 
                       } @else if (invited(event)) {
                         · <span class="ev-badge">RSVP</span>
                       } @else {
-                        · not invited
+                        · {{ joinable(event) ? 'open to join' : 'not invited' }}
                       }
                     </span>
                   </a>
@@ -184,6 +185,7 @@ export class EventsPage implements OnInit {
   protected readonly voterCount = (event: GroupEvent) => Object.keys(event.votes).length;
   protected readonly hasVoted = (event: GroupEvent) => !!event.votes[this.myId() ?? ''];
   protected readonly invited = (event: GroupEvent) => isInvited(event, this.myId() ?? '');
+  protected readonly joinable = (event: GroupEvent) => canJoin(event, this.myId() ?? '');
   protected readonly isOpen = (event: GroupEvent) => votingOpen(event);
   protected readonly deadline = (event: GroupEvent) => formatDeadline(event.voteBy!);
   protected readonly invitedCount = (event: GroupEvent, members: { id: string }[]) =>

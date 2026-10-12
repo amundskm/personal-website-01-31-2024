@@ -14,6 +14,8 @@ import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import {
   bestOptionIds,
+  canJoin,
+  canLeave,
   canManage,
   type EventDetail,
   eventIcs,
@@ -155,7 +157,14 @@ const RSVPS: { value: Rsvp; label: string }[] = [
                     <p class="ev-details">{{ e.details }}</p>
                   }
                   <p class="ev-meta">Organized by {{ nameOf(e.createdBy) }}</p>
-                  <p class="ev-meta">{{ inviteSummary() }}</p>
+                  <p class="ev-meta">
+                    {{ inviteSummary() }}
+                    @if (leavable()) {
+                      <button type="button" class="ev-leave" [disabled]="busy()" (click)="leave()">
+                        Leave event
+                      </button>
+                    }
+                  </p>
                   @if (e.status !== 'cancelled') {
                     <app-event-attachments [detail]="d" (changed)="replaceEvent($event)" />
                   }
@@ -187,6 +196,16 @@ const RSVPS: { value: Rsvp; label: string }[] = [
                     @if (!invited()) {
                       <p class="ev-notice">
                         You're not invited to this one, but you can follow along.
+                        @if (joinable()) {
+                          <button
+                            type="button"
+                            class="btn btn--primary ev-join"
+                            [disabled]="busy()"
+                            (click)="join()"
+                          >
+                            Join this event
+                          </button>
+                        }
                       </p>
                     }
                     <div
@@ -238,6 +257,16 @@ const RSVPS: { value: Rsvp; label: string }[] = [
                   @if (!invited()) {
                     <p class="ev-notice">
                       You're not invited to this one, but you can follow along.
+                      @if (joinable()) {
+                        <button
+                          type="button"
+                          class="btn btn--primary ev-join"
+                          [disabled]="busy()"
+                          (click)="join()"
+                        >
+                          Join this event
+                        </button>
+                      }
                     </p>
                   }
                   @if (e.voteBy) {
@@ -434,6 +463,29 @@ export class EventPage {
     return [me, ...others];
   });
 
+  protected readonly joinable = computed(() => {
+    const d = this.detail();
+    return !!d && canJoin(d.event, d.me.id);
+  });
+  protected readonly leavable = computed(() => {
+    const d = this.detail();
+    return !!d && canLeave(d.event, d.me.id);
+  });
+
+  protected join(): void {
+    void this.run(
+      `/events/${this.id()}/join`,
+      'POST',
+      {},
+      "You're in. You'll get this event's emails now.",
+    );
+  }
+
+  protected leave(): void {
+    if (!confirm('Leave this event? Your votes and RSVP will be removed.')) return;
+    void this.run(`/events/${this.id()}/leave`, 'POST', {}, 'You left this event.');
+  }
+
   protected readonly inviteSummary = computed(() => {
     const d = this.detail();
     if (!d) return '';
@@ -441,7 +493,7 @@ export class EventPage {
     const count = invitedMembers(d.event, d.members).length;
     return (
       `${count} ${count === 1 ? 'person' : 'people'} invited` +
-      (d.event.inviteesOnly ? ' · only they can see this event.' : '.')
+      (d.event.inviteesOnly ? ' · only they can see this event.' : ' · any member can join.')
     );
   });
 

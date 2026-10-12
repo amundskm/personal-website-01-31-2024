@@ -1,5 +1,5 @@
 import { displayUrl, renderEmail } from '../../../../amplify/shared/email-layout';
-import { commentEmail, eventEmail, pollClosedEmail } from './event-email';
+import { commentEmail, eventEmail, memberJoinedEmail, pollClosedEmail } from './event-email';
 import type { GroupEvent } from './events';
 
 // Made-up event only: the repository is public.
@@ -171,5 +171,14 @@ describe('poll emails with a deadline', () => {
     );
     expect(email.text).toContain("Didn't vote: Zed");
     expect(email.text).toContain('Pick the date: https://neiaboiz.com/events/evt1');
+  });
+});
+
+describe('memberJoinedEmail', () => {
+  it('tells the organizer who joined', () => {
+    const email = memberJoinedEmail(event, 'Carol', 4, url);
+    expect(email.subject).toBe('Carol joined Lake <weekend>');
+    expect(email.text).toContain('Carol added themselves to your event. 4 people are invited now.');
+    expect(email.text).toContain('See the event: https://neiaboiz.com/events/evt1');
   });
 });

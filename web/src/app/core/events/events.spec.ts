@@ -12,6 +12,8 @@ import {
   lastDay,
   shortDateLabel,
   bestOptionIds,
+  canJoin,
+  canLeave,
   canManage,
   canSee,
   invitedMembers,
@@ -447,5 +449,25 @@ describe('attachments', () => {
     expect(formatBytes(512)).toBe('512 B');
     expect(formatBytes(2048)).toBe('2 KB');
     expect(formatBytes(3.4 * 1024 * 1024)).toBe('3.4 MB');
+  });
+});
+
+describe('joining and leaving', () => {
+  const listed = event({ invitees: ['bob'], inviteesOnly: false }); // created by alice
+
+  it('lets members join a visible event with a list, but not a hidden or open-to-all one', () => {
+    expect(canJoin(listed, 'carol')).toBe(true);
+    expect(canJoin(listed, 'bob')).toBe(false); // already in
+    expect(canJoin(listed, 'alice')).toBe(false); // the organizer
+    expect(canJoin({ ...listed, inviteesOnly: true }, 'carol')).toBe(false);
+    expect(canJoin({ ...listed, invitees: null }, 'carol')).toBe(false);
+    expect(canJoin({ ...listed, status: 'cancelled' }, 'carol')).toBe(false);
+  });
+
+  it('lets invitees leave, but never the organizer', () => {
+    expect(canLeave(listed, 'bob')).toBe(true);
+    expect(canLeave(listed, 'alice')).toBe(false);
+    expect(canLeave(listed, 'carol')).toBe(false);
+    expect(canLeave({ ...listed, invitees: null }, 'bob')).toBe(false);
   });
 });

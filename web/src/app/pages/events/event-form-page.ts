@@ -370,7 +370,8 @@ interface DateRow {
                       [checked]="!inviteesOnly()"
                       (change)="inviteesOnly.set(false)"
                     />
-                    All members can see it (only invited people get emails and can RSVP)
+                    All members can see it and join (only people on the list get emails and can
+                    RSVP)
                   </label>
                 </div>
               }
@@ -407,7 +408,7 @@ interface DateRow {
       </div>
     </section>
   `,
-  styleUrl: './events.scss',
+  styleUrls: ['./events.scss', './event-form-page.scss'],
 })
 export class EventFormPage implements OnInit {
   private readonly auth = inject(AuthService);

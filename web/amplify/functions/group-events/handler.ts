@@ -45,6 +45,7 @@ import {
   type Email,
   type EmailKind,
   eventEmail,
+  memberJoinedEmail,
   pollClosedEmail,
   type PollResult,
   type RecipientLinks,
@@ -61,6 +62,8 @@ import {
   type AttachmentKind,
   bestOptionIds,
   calendarFeedIcs,
+  canJoin,
+  canLeave,
   canManage,
   canSee,
   DEFAULT_TIME_ZONE,
@@ -134,6 +137,8 @@ interface MemberRecord extends Member {
  *   POST /events/{id}/confirm  → { optionId }, creator or admin
  *   POST /events/{id}/cancel   → creator or admin
  *   POST /events/{id}/restore  → { notify } creator or admin; back to what it was
+ *   POST /events/{id}/join     → add myself to a visible event's invite list (emails the organizer)
+ *   POST /events/{id}/leave    → take myself off the invite list (votes and RSVP removed)
  *   PUT  /events/{id}/rsvp     → { rsvp: going|maybe|no } mine
  *   POST /events/{id}/comments → CommentInput (emails the organizer, or the parent's author)
  *   DELETE /events/{id}/comments/{cid}           → author, organizer or admin
@@ -200,6 +205,10 @@ async function route(event: ApiEvent, caller: Caller): Promise<Result> {
     return cancel(caller, id);
   } else if (action === 'restore' && method === 'POST') {
     return restore(caller, id, body);
+  } else if (action === 'join' && method === 'POST') {
+    return join(caller, id);
+  } else if (action === 'leave' && method === 'POST') {
+    return leave(caller, id);
   } else if (action === 'attachments') {
     const attachmentId = commentId;
     if (!attachmentId && method === 'POST') return requestUpload(caller, id, body);
@@ -518,6 +527,85 @@ async function cancel(caller: Caller, id: string): Promise<Result> {
  * and RSVPs kept). Reminders that came due while it was cancelled are skipped.
  * With notify, everyone who wants event updates gets a "back on" email.
  */
+/** Adds the caller to a visible event's invite list, and tells the organizer. */
+async function join(caller: Caller, id: string): Promise<Result> {
+  const event = await loadVisibleEvent(caller, id);
+  if (!event) return json(404, { message: 'Event not found' });
+  if (!canJoin(event, caller.id)) {
+    return json(409, {
+      message: isInvited(event, caller.id)
+        ? "You're already in."
+        : "This event isn't open to join.",
+    });
+  }
+  try {
+    await db.send(
+      new UpdateCommand({
+        TableName: TABLE,
+        Key: { pk: eventKey(id) },
+        UpdateExpression: 'SET invitees = list_append(invitees, :me)',
+        // Re-checked here in case the organizer changed the event meanwhile
+        ConditionExpression:
+          'attribute_exists(invitees) AND NOT contains(invitees, :id) AND inviteesOnly <> :true AND #status <> :cancelled',
+        ExpressionAttributeNames: { '#status': 'status' },
+        ExpressionAttributeValues: {
+          ':me': [caller.id],
+          ':id': caller.id,
+          ':true': true,
+          ':cancelled': 'cancelled',
+        },
+      }),
+    );
+  } catch (error) {
+    if ((error as { name?: string }).name === 'ConditionalCheckFailedException') {
+      return json(409, { message: "This event isn't open to join anymore." });
+    }
+    throw error;
+  }
+  const joined: GroupEvent = { ...event, invitees: [...event.invitees!, caller.id] };
+
+  const members = await loadMembers(true);
+  const organizer = members.find((m) => m.id === event.createdBy);
+  if (organizer && organizer.id !== caller.id && wantsEmail(organizer.prefs, 'joined')) {
+    const name = members.find((m) => m.id === caller.id)?.name ?? 'Someone';
+    await sendEmail(
+      organizer,
+      memberJoinedEmail(
+        event,
+        name,
+        invitedMembers(joined, members).length,
+        `${env.SITE_URL}/events/${id}`,
+        await recipientLinks(organizer.id),
+      ),
+      'joined',
+    );
+  }
+  return json(200, await withFileLinks(joined));
+}
+
+/** Takes the caller off the invite list, removing their votes and RSVP so they stop counting. */
+async function leave(caller: Caller, id: string): Promise<Result> {
+  const event = await loadVisibleEvent(caller, id);
+  if (!event) return json(404, { message: 'Event not found' });
+  if (!canLeave(event, caller.id)) return json(409, { message: "You can't leave this event." });
+  const invitees = event.invitees!.filter((m) => m !== caller.id);
+  await db.send(
+    new UpdateCommand({
+      TableName: TABLE,
+      Key: { pk: eventKey(id) },
+      UpdateExpression: 'SET invitees = :invitees REMOVE votes.#me, rsvps.#me',
+      ConditionExpression: 'contains(invitees, :id)',
+      ExpressionAttributeNames: { '#me': caller.id },
+      ExpressionAttributeValues: { ':invitees': invitees, ':id': caller.id },
+    }),
+  );
+  const votes = { ...event.votes };
+  const rsvps = { ...event.rsvps };
+  delete votes[caller.id];
+  delete rsvps[caller.id];
+  return json(200, await withFileLinks({ ...event, invitees, votes, rsvps }));
+}
+
 async function restore(caller: Caller, id: string, body: Record<string, unknown>): Promise<Result> {
   const event = await loadVisibleEvent(caller, id);
   if (!event) return json(404, { message: 'Event not found' });

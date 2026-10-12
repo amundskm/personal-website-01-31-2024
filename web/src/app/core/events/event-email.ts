@@ -226,6 +226,47 @@ export function commentEmail(
   return { subject: c.subject, text, html, unsubscribeUrl: links?.unsubscribe };
 }
 
+/** Tells the organizer that someone added themselves to their event. */
+export function memberJoinedEmail(
+  event: Pick<GroupEvent, 'title'>,
+  name: string,
+  invitedCount: number,
+  url: string,
+  links?: RecipientLinks,
+): Email {
+  const intro = `${name} added themselves to your event. ${invitedCount} people are invited now.`;
+  const footer = "You're getting this because you organize this event on neiaboiz.com.";
+  const html = renderEmail({
+    eyebrow: 'Someone joined',
+    heading: event.title,
+    preheader: intro,
+    paragraphs: [intro],
+    button: { href: url, text: 'See the event' },
+    siteLink: EVENTS_LINK,
+    footer,
+    footerLinks: footerLinks(links),
+  });
+  const text = [
+    'NEIA BOIZ · neiaboiz.com',
+    '',
+    'SOMEONE JOINED',
+    event.title,
+    '',
+    intro,
+    '',
+    `See the event: ${url}`,
+    `${EVENTS_LINK.label} ${EVENTS_LINK.href}`,
+    '',
+    ...footerText(footer, links),
+  ].join('\n');
+  return {
+    subject: `${name} joined ${event.title}`,
+    text,
+    html,
+    unsubscribeUrl: links?.unsubscribe,
+  };
+}
+
 /** One proposed date's results, for the "voting closed" email. */
 export interface PollResult {
   label: string;
