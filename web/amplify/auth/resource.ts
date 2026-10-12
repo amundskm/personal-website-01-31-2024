@@ -1,5 +1,4 @@
 import { defineAuth } from '@aws-amplify/backend';
-import { ROLES } from '../../src/app/core/auth/roles';
 
 /**
  * Cognito user pool. Accounts are invite-only (self sign-up is disabled in
@@ -16,5 +15,7 @@ export const auth = defineAuth({
       },
     },
   },
-  groups: [...ROLES],
+  // Must match ROLES in src/app/core/auth/roles.ts. (Not imported from there:
+  // the deployer loads src/ as CommonJS, so its named exports can't be read.)
+  groups: ['admin', 'wife', 'neia-boiz'],
 });

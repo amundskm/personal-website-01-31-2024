@@ -103,8 +103,8 @@ browser ──login──▶ Cognito (user pool, one group per role)
 - **Accounts are invite-only.** Self sign-up is disabled; you create users in the Cognito console.
 - **Content** is edited in the Studio's **"Members only (private)"** workspace (switch workspaces top-left).
   Each *Members page* has a **"Who can see this?"** checklist. Leave it empty for admin-only.
-- **Roles** are defined in `web/src/app/core/auth/roles.ts`. To add one, add it there and to
-  `AUDIENCES` in `studio/schemaTypes/documents/memberPage.ts`, then redeploy.
+- **Roles** are defined in `web/src/app/core/auth/roles.ts`. To add one, add it there, to `groups` in
+  `web/amplify/auth/resource.ts` and to `AUDIENCES` in `studio/schemaTypes/documents/memberPage.ts`, then redeploy.
 - **Gating custom features:** for an Angular page that isn't a Sanity members page, protect the route with
   `canActivate: [requireRole('wife')]` (admins always pass). The guard only hides navigation,
   so any private *data* behind it must come from the members API (`web/amplify/`), never from the
