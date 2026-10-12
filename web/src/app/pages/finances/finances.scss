@@ -55,6 +55,10 @@ input {
   }
 }
 
+.fin-card--wide {
+  grid-column: 1 / -1;
+}
+
 .fin-card__meta {
   display: flex;
   flex-wrap: wrap;

@@ -1,10 +1,12 @@
 import {
   matchCategory,
+  monthWindow,
   type SpendingPlan,
   type Statement,
   stageFor,
   suggestPattern,
   summarizeMonths,
+  targetForMonth,
   UNCATEGORIZED,
   validateStatement,
 } from './finances';
@@ -171,5 +173,20 @@ describe('validateStatement', () => {
         valid.id,
       ),
     ).toMatch(/repayment/);
+  });
+});
+
+describe('monthWindow', () => {
+  it('lists the months ending with the given one, across years', () => {
+    expect(monthWindow('2026-02', 4)).toEqual(['2025-11', '2025-12', '2026-01', '2026-02']);
+    expect(monthWindow('2026-12', 12)[0]).toBe('2026-01');
+  });
+});
+
+describe('targetForMonth', () => {
+  it('uses the stage in effect at the end of the month', () => {
+    expect(targetForMonth(plan.stages, '2025-12')).toBeNull();
+    expect(targetForMonth(plan.stages, '2026-02')).toBe(900);
+    expect(targetForMonth(plan.stages, '2026-03')).toBe(700);
   });
 });

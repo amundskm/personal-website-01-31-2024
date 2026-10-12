@@ -95,6 +95,7 @@ async function dashboard(): Promise<FinancesDashboard> {
       name,
       monthlyBudget,
     })),
+    stages: plan.stages,
     months: summarizeMonths(statements, plan),
   };
 }

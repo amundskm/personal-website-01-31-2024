@@ -85,6 +85,8 @@ export interface MonthSummary {
 /** What the wife-only dashboard receives: totals only, no transactions or rules. */
 export interface FinancesDashboard {
   categories: Omit<PlanCategory, 'merchantPatterns'>[];
+  /** For drawing the target across months without statements. */
+  stages: PlanStage[];
   months: MonthSummary[];
 }
 
@@ -142,6 +144,20 @@ export function stageFor(stages: PlanStage[], date: string): PlanStage | null {
       .filter((stage) => stage.startDate <= date)
       .sort((a, b) => b.startDate.localeCompare(a.startDate))[0] ?? null
   );
+}
+
+/** The `count` months (`YYYY-MM`) ending with `lastMonth`, oldest first. */
+export function monthWindow(lastMonth: string, count: number): string[] {
+  const [year, month] = lastMonth.split('-').map(Number);
+  return Array.from({ length: count }, (_, i) => {
+    const date = new Date(Date.UTC(year, month - 1 - (count - 1 - i), 1));
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+  });
+}
+
+/** The monthly target in effect at the end of `month` (`YYYY-MM`), or null before the plan starts. */
+export function targetForMonth(stages: PlanStage[], month: string): number | null {
+  return stageFor(stages, `${month}-31`)?.monthlyTarget ?? null;
 }
 
 /** Groups statements by closing month and totals them, newest month first. */

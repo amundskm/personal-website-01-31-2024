@@ -11,6 +11,7 @@ const data: FinancesDashboard = {
     { key: 'food', name: 'Food', monthlyBudget: 500 },
     { key: 'fun', name: 'Fun', monthlyBudget: 100 },
   ],
+  stages: [{ label: 'Start', startDate: '2029-12-01', monthlyTarget: 1000 }],
   months: [
     {
       month: '2030-02',
