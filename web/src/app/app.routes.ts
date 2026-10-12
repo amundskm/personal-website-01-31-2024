@@ -1,4 +1,5 @@
 import { Routes } from '@angular/router';
+import { requireRole } from './core/auth/role.guard';
 import { CmsPage } from './pages/cms-page/cms-page';
 
 export const routes: Routes = [
@@ -19,6 +20,27 @@ export const routes: Routes = [
   {
     path: 'projects/:slug',
     loadComponent: () => import('./pages/projects/project-page').then((m) => m.ProjectPage),
+  },
+  {
+    path: 'login',
+    loadComponent: () => import('./pages/login/login-page').then((m) => m.LoginPage),
+  },
+  // Members area: any signed-in user. Gate individual features with
+  // requireRole('wife'), requireRole('neia-boiz'), … (admins always pass).
+  {
+    path: 'members',
+    canActivate: [requireRole()],
+    children: [
+      {
+        path: '',
+        loadComponent: () =>
+          import('./pages/members/members-home-page').then((m) => m.MembersHomePage),
+      },
+      {
+        path: ':slug',
+        loadComponent: () => import('./pages/members/member-page').then((m) => m.MemberPage),
+      },
+    ],
   },
   // Any other single-segment path is looked up as a CMS page (and 404s if missing)
   { path: ':slug', component: CmsPage },

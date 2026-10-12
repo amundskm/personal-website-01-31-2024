@@ -99,12 +99,17 @@
     list-style: none;
   }
 
-  a {
+  a,
+  button {
     display: block;
     padding: var(--space-2) var(--space-3);
     color: var(--color-muted);
     text-decoration: none;
+    font: inherit;
     font-weight: 500;
+    background: none;
+    border: 0;
+    cursor: pointer;
     border-radius: var(--radius-full);
     transition:
       color var(--transition),

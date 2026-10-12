@@ -3,13 +3,21 @@
 version: 1
 applications:
   - appRoot: web
-    frontend:
+    backend:
       phases:
-        preBuild:
+        build:
           commands:
             - nvm install 24 && nvm use 24
             # npm workspaces: install from the repo root
             - (cd .. && npm ci)
+            # Deploys the Amplify Gen 2 backend (web/amplify: Cognito + members API) and
+            # writes public/amplify_outputs.json, which the site loads at runtime
+            - npx ampx pipeline-deploy --branch $AWS_BRANCH --app-id $AWS_APP_ID --outputs-out-dir public
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - nvm use 24
         build:
           commands:
             # Prerenders every page, post and project currently published in Sanity

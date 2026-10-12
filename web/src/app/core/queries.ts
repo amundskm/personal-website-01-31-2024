@@ -37,6 +37,41 @@ const projectCardFields = /* groq */ `
 // limit/count on the client, since GROQ slices only accept literal integers.
 const MAX_LIST_ITEMS = 24;
 
+// Page sections, shared by public pages and members-only pages.
+const sectionFields = /* groq */ `
+  ...,
+  _type == "heroBlock" => {
+    image { ${imageFields} },
+    buttons[]{ ${linkFields} }
+  },
+  _type == "richTextBlock" => {
+    content[]{ ${blockContentFields} }
+  },
+  _type == "imageBlock" => {
+    image { ${imageFields} }
+  },
+  _type == "twoColumnBlock" => {
+    left { content[]{ ${blockContentFields} }, image { ${imageFields} } },
+    right { content[]{ ${blockContentFields} }, image { ${imageFields} } }
+  },
+  _type == "ctaBlock" => {
+    button { ${linkFields} }
+  },
+  _type == "projectGridBlock" => {
+    "items": select(
+      mode == "manual" => projects[]->{ ${projectCardFields} },
+      mode == "all" => *[_type == "project" && defined(slug.current)]
+        | order(order asc, _createdAt desc)[0...${MAX_LIST_ITEMS}]{ ${projectCardFields} },
+      *[_type == "project" && defined(slug.current) && featured == true]
+        | order(order asc, _createdAt desc)[0...${MAX_LIST_ITEMS}]{ ${projectCardFields} }
+    )
+  },
+  _type == "postListBlock" => {
+    "items": *[_type == "post" && defined(slug.current)]
+      | order(publishedAt desc)[0...${MAX_LIST_ITEMS}]{ ${postCardFields} }
+  }
+`;
+
 // ---------------------------------------------------------------------------
 // Site settings
 // ---------------------------------------------------------------------------
@@ -58,39 +93,7 @@ export const PAGE_QUERY = defineQuery(`
   *[_type == "page" && slug.current == $slug][0]{
     _id, title, "slug": slug.current,
     seo { ${seoFields} },
-    sections[]{
-      ...,
-      _type == "heroBlock" => {
-        image { ${imageFields} },
-        buttons[]{ ${linkFields} }
-      },
-      _type == "richTextBlock" => {
-        content[]{ ${blockContentFields} }
-      },
-      _type == "imageBlock" => {
-        image { ${imageFields} }
-      },
-      _type == "twoColumnBlock" => {
-        left { content[]{ ${blockContentFields} }, image { ${imageFields} } },
-        right { content[]{ ${blockContentFields} }, image { ${imageFields} } }
-      },
-      _type == "ctaBlock" => {
-        button { ${linkFields} }
-      },
-      _type == "projectGridBlock" => {
-        "items": select(
-          mode == "manual" => projects[]->{ ${projectCardFields} },
-          mode == "all" => *[_type == "project" && defined(slug.current)]
-            | order(order asc, _createdAt desc)[0...${MAX_LIST_ITEMS}]{ ${projectCardFields} },
-          *[_type == "project" && defined(slug.current) && featured == true]
-            | order(order asc, _createdAt desc)[0...${MAX_LIST_ITEMS}]{ ${projectCardFields} }
-        )
-      },
-      _type == "postListBlock" => {
-        "items": *[_type == "post" && defined(slug.current)]
-          | order(publishedAt desc)[0...${MAX_LIST_ITEMS}]{ ${postCardFields} }
-      }
-    }
+    sections[]{ ${sectionFields} }
   }
 `);
 
@@ -138,4 +141,25 @@ export const PROJECT_QUERY = defineQuery(`
 
 export const PROJECT_SLUGS_QUERY = defineQuery(`
   *[_type == "project" && defined(slug.current)].slug.current
+`);
+
+// ---------------------------------------------------------------------------
+// Members-only pages (private dataset)
+//
+// Run by the members-content Lambda with a read token, never by the browser.
+// $groups are the caller's Cognito groups; admins see every page.
+// ---------------------------------------------------------------------------
+
+const memberAccessFilter = /* groq */ `($isAdmin || count(audiences[@ in $groups]) > 0)`;
+
+export const MEMBER_PAGES_QUERY = defineQuery(`
+  *[_type == "memberPage" && defined(slug.current) && ${memberAccessFilter}]
+    | order(title asc){ _id, title, "slug": slug.current, summary, audiences }
+`);
+
+export const MEMBER_PAGE_QUERY = defineQuery(`
+  *[_type == "memberPage" && slug.current == $slug && ${memberAccessFilter}][0]{
+    _id, title, "slug": slug.current, summary, audiences,
+    sections[]{ ${sectionFields} }
+  }
 `);

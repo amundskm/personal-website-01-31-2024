@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, signal } f
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { filter } from 'rxjs';
+import { AuthService } from '../../core/auth/auth.service';
 import type { SanityLink, SiteSettings } from '../../core/models';
 import { resolveLink } from '../../core/paths';
 import { WizardHat } from '../../shared/wizard/wizard-hat';
@@ -69,6 +70,16 @@ const DEFAULT_NAV = [
                 }
               </li>
             }
+            <!-- Only known in the browser, so nothing is prerendered here -->
+            @switch (auth.state().status) {
+              @case ('signedIn') {
+                <li><a routerLink="/members" routerLinkActive="is-active">Members</a></li>
+                <li><button type="button" (click)="signOut()">Log out</button></li>
+              }
+              @case ('signedOut') {
+                <li><a routerLink="/login" routerLinkActive="is-active">Log in</a></li>
+              }
+            }
           </ul>
         </nav>
       </div>
@@ -77,6 +88,9 @@ const DEFAULT_NAV = [
   styleUrl: './header.scss',
 })
 export class Header {
+  private readonly router = inject(Router);
+  protected readonly auth = inject(AuthService);
+
   readonly settings = input<SiteSettings | null>();
 
   /** CMS navigation, falling back to the built-in sections until it is configured. */
@@ -89,11 +103,17 @@ export class Header {
 
   constructor() {
     // Close the mobile menu after navigating
-    inject(Router)
-      .events.pipe(
+    this.router.events
+      .pipe(
         filter((e) => e instanceof NavigationEnd),
         takeUntilDestroyed(),
       )
       .subscribe(() => this.menuOpen.set(false));
+  }
+
+  protected async signOut(): Promise<void> {
+    await this.auth.signOut();
+    this.menuOpen.set(false);
+    if (this.router.url.startsWith('/members')) await this.router.navigateByUrl('/');
   }
 }

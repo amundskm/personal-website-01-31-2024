@@ -8,6 +8,7 @@ each rendered by its own Angular component. The site is prerendered to static HT
 ```
 personal-website/
 ├── web/        Angular app (prerendered/static, SCSS)
+│   └── amplify/  Amplify Gen 2 backend: Cognito login + members-only content API
 ├── studio/     Sanity Studio (content editor + schemas)
 └── amplify.yml AWS Amplify build spec
 ```
@@ -58,6 +59,7 @@ In dev mode the site queries Sanity live.
 | Blog post | `/blog/<slug>` (list at `/blog`) | `pages/blog/*` |
 | Project | `/projects/<slug>` (list at `/projects`) | `pages/projects/*` |
 | Site settings | header nav, footer, social links, default SEO | `layout/*` |
+| Members page *(private dataset)* | `/members/<slug>` (list at `/members`), signed-in users only | `pages/members/*` |
 
 A page's **sections** are rendered by `web/src/app/blocks/block-renderer.ts`.
 It looks up each section's `_type` in `blocks/block-registry.ts`.
@@ -76,6 +78,73 @@ It looks up each section's `_type` in `blocks/block-registry.ts`.
 Global design tokens are CSS custom properties in `web/src/styles/_tokens.scss`, covering colors, spacing, type scale and dark mode.
 Components use `@use 'mixins' as *;` for breakpoints (`@include from(md) { … }`).
 Section themes (`theme-light`, `theme-dark` and `theme-accent`) remap the palette inside a block.
+
+## Login and members-only content
+
+Some content is only visible to signed-in users with the right **permission** (role):
+
+| Role | Who | Sees |
+|---|---|---|
+| `admin` | you | everything |
+| `wife` | | members pages shared with "Wife" |
+| `neia-boiz` | | members pages shared with "NEIA Boiz" |
+
+The site is static and the `production` dataset is public, so gated content can't live there.
+Instead:
+
+```
+browser ──login──▶ Cognito (user pool, one group per role)
+   │
+   └──GET /pages/<slug> + access token──▶ API Gateway (verifies the token)
+                                              └──▶ Lambda ──read token──▶ Sanity "private" dataset
+                                                    (filters by the user's groups)
+```
+
+- **Accounts are invite-only.** Self sign-up is disabled; you create users in the Cognito console.
+- **Content** is edited in the Studio's **"Members only (private)"** workspace (switch workspaces top-left).
+  Each *Members page* has a **"Who can see this?"** checklist. Leave it empty for admin-only.
+- **Roles** are defined in `web/src/app/core/auth/roles.ts`. To add one, add it there and to
+  `AUDIENCES` in `studio/schemaTypes/documents/memberPage.ts`, then redeploy.
+- **Gating custom features:** for an Angular page that isn't a Sanity members page, protect the route with
+  `canActivate: [requireRole('wife')]` (admins always pass). The guard only hides navigation,
+  so any private *data* behind it must come from the members API (`web/amplify/`), never from the
+  public dataset or the bundle.
+- Images uploaded to the private dataset are served from Sanity's CDN at unguessable but public URLs.
+
+### One-time setup
+
+1. **Create the private dataset and a read token:**
+   ```sh
+   cd studio
+   npx sanity dataset create private --visibility private
+   ```
+   In https://www.sanity.io/manage go to **API → Tokens → Add API token** and create a **Viewer** token.
+2. **Deploy the backend.** Locally, with AWS credentials configured (`aws configure` or `aws sso login`):
+   ```sh
+   cd web
+   npx ampx sandbox secret set SANITY_PRIVATE_READ_TOKEN   # paste the Viewer token
+   npx ampx sandbox --outputs-out-dir public                # deploys a personal sandbox and watches for changes
+   ```
+   `ng serve` now has login. Without a sandbox the site still runs, and "Log in" just doesn't show.
+3. **Production (Amplify Hosting):**
+   - In **Hosting → Secrets**, add `SANITY_PRIVATE_READ_TOKEN` (the Viewer token).
+   - Make sure the app's service role has the **AmplifyBackendDeployFullAccess** policy.
+   - Members URLs are never prerendered, so they must load `/index.csr.html` with a 200.
+     A catch-all `/<*>` → `/index.csr.html` rule with type `404-200` already does this. If your
+     catch-all returns a real `404` instead, add these rules above it in **Hosting → Rewrites and redirects**:
+
+     | Source | Target | Type |
+     |---|---|---|
+     | `/members` | `/index.csr.html` | `200 (Rewrite)` |
+     | `/members/<*>` | `/index.csr.html` | `200 (Rewrite)` |
+
+   The next push builds the backend (`amplify.yml` runs `ampx pipeline-deploy`) before the site.
+4. **Create your admin account:** in the AWS console open **Cognito → User pools →** the `amplifyAuthUserPool…`
+   pool → **Users → Create user**. Enter your email, choose **Send an email invitation**, then open the
+   user and **Add user to group → admin**. On first login you'll be asked to set a new password.
+   Do the same for anyone else with the `wife` or `neia-boiz` group.
+
+If someone is added to a group while signed in, they need to log out and back in to pick it up.
 
 ## Scripts (repo root)
 

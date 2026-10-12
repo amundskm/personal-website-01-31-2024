@@ -33,6 +33,10 @@ export const serverRoutes: ServerRoute[] = [
     getPrerenderParams: slugParams(PROJECT_SLUGS_QUERY),
     fallback: PrerenderFallback.Client,
   },
+  { path: 'login', renderMode: RenderMode.Prerender },
+  // Members-only content is never prerendered; it's fetched after signing in
+  { path: 'members', renderMode: RenderMode.Client },
+  { path: 'members/**', renderMode: RenderMode.Client },
   {
     path: ':slug',
     renderMode: RenderMode.Prerender,
