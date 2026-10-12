@@ -24,6 +24,9 @@ import { SeoService } from '../../core/seo.service';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
 import { MemberAvatar } from '../../shared/member-avatar/member-avatar';
 
+/** Google Calendar's "Add calendar > From URL" page. */
+const GOOGLE_ADD_BY_URL = 'https://calendar.google.com/calendar/u/0/r/settings/addbyurl';
+
 /** Your name, photo and which event emails you get. */
 @Component({
   selector: 'app-profile-page',
@@ -108,19 +111,20 @@ import { MemberAvatar } from '../../shared/member-avatar/member-avatar';
             </p>
             @if (feed(); as f) {
               <div class="button-row">
-                <a
-                  class="btn btn--primary"
-                  [href]="f.google"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
+                <button type="button" class="btn btn--primary" (click)="addToGoogle(f.https)">
                   Add to Google Calendar
-                </a>
+                </button>
                 <a class="btn btn--secondary" [href]="f.webcal">Add to Apple Calendar</a>
                 <button type="button" class="btn btn--text" (click)="copyFeed(f.https)">
                   {{ copied() ? 'Copied!' : 'Copy link' }}
                 </button>
               </div>
+              @if (googleOpened()) {
+                <p class="ev-status" role="status">
+                  Your link is copied. In the Google Calendar tab, paste it into "URL of calendar"
+                  and click Add calendar.
+                </p>
+              }
               <p class="ev-meta">
                 Outlook and other apps: subscribe "from the web" with the copied link. Google can
                 take up to a day to pick up changes. This link is private to you; don't share it.
@@ -218,8 +222,20 @@ export class ProfilePage implements OnInit {
   protected readonly allOff = computed(() => Object.values(this.prefs()).every((on) => !on));
 
   /** This member's private calendar subscription, in the forms each app wants. */
-  protected readonly feed = signal<{ https: string; webcal: string; google: string } | null>(null);
+  protected readonly feed = signal<{ https: string; webcal: string } | null>(null);
   protected readonly copied = signal(false);
+  protected readonly googleOpened = signal(false);
+
+  /**
+   * Google's one-click subscribe link (?cid=) can't use this feed: it rejects
+   * https:// URLs and fetches webcal:// over plain http, which the API doesn't
+   * serve. Adding by URL works, so copy the link and open that page.
+   */
+  protected addToGoogle(url: string): void {
+    window.open(GOOGLE_ADD_BY_URL, '_blank', 'noopener');
+    void navigator.clipboard.writeText(url);
+    this.googleOpened.set(true);
+  }
 
   protected async copyFeed(url: string): Promise<void> {
     await navigator.clipboard.writeText(url);
@@ -234,14 +250,7 @@ export class ProfilePage implements OnInit {
       if (!p?.calendarToken) return;
       void this.auth.membersApiBase().then((base) => {
         const https = `${base}/calendar/${encodeURIComponent(p.id)}/${p.calendarToken}.ics`;
-        const webcal = https.replace(/^https:/, 'webcal:');
-        this.feed.set({
-          https,
-          webcal,
-          // Google fetches webcal:// links over plain http://, which the API doesn't
-          // answer, so the subscription stays empty. Give Google the https:// link.
-          google: `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(https)}`,
-        });
+        this.feed.set({ https, webcal: https.replace(/^https:/, 'webcal:') });
       });
     });
     // Start the form from what's saved
