@@ -1,11 +1,13 @@
 import {
   lineRef,
+  budgetForMonth,
   matchCategory,
   monthLineItems,
   monthWindow,
   type SpendingPlan,
   type Statement,
   stageFor,
+  statementMonth,
   suggestPattern,
   summarizeMonths,
   targetForMonth,
@@ -63,10 +65,13 @@ describe('stageFor', () => {
 });
 
 describe('summarizeMonths', () => {
-  it('totals spending by closing month, excluding payments and netting refunds and repayments', () => {
+  it('totals spending by the month statements start, excluding payments and netting refunds and repayments', () => {
     const months = summarizeMonths(
       [
         statement({
+          id: '1234_2026-02-04',
+          openingDate: '2026-01-05',
+          closingDate: '2026-02-04',
           transactions: [
             {
               date: '2025-12-06',
@@ -100,9 +105,10 @@ describe('summarizeMonths', () => {
           friendRepayment: { amountCents: 4000, categoryKey: 'food' },
         }),
         statement({
-          id: '9999_2026-01-20',
+          id: '9999_2026-02-09',
           last4: '9999',
-          closingDate: '2026-01-20',
+          openingDate: '2026-01-10',
+          closingDate: '2026-02-09',
           transactions: [
             {
               date: '2026-01-10',
@@ -114,8 +120,9 @@ describe('summarizeMonths', () => {
           ],
         }),
         statement({
-          id: '1234_2026-03-04',
-          closingDate: '2026-03-04',
+          id: '1234_2026-04-04',
+          openingDate: '2026-03-05',
+          closingDate: '2026-04-04',
           transactions: [
             {
               date: '2026-02-10',
@@ -231,6 +238,7 @@ describe('monthLineItems', () => {
       }),
       statement({
         id: '1234_2026-02-04',
+        openingDate: '2026-01-05',
         closingDate: '2026-02-04',
         transactions: [
           {
@@ -244,7 +252,7 @@ describe('monthLineItems', () => {
       }),
     ];
 
-    const items = monthLineItems(statements, plan, '2026-01');
+    const items = monthLineItems(statements, plan, '2025-12');
     expect(items.map((i) => [i.date, i.description, i.amountCents, i.kind, i.categoryKey])).toEqual(
       [
         ['2025-12-06', 'A', 30000, 'purchase', 'food'],
@@ -266,5 +274,39 @@ describe('monthLineItems', () => {
       const sum = items.filter((i) => i.categoryKey === key).reduce((t, i) => t + i.amountCents, 0);
       expect(sum).toBe(cents);
     }
+  });
+});
+
+describe('statementMonth', () => {
+  it('is the month the billing period starts in', () => {
+    expect(statementMonth({ openingDate: '2026-09-05' })).toBe('2026-09');
+    expect(statementMonth({ openingDate: '2025-12-05' })).toBe('2025-12');
+  });
+});
+
+describe('budgetForMonth', () => {
+  const golf = {
+    key: 'golf',
+    name: 'Golf',
+    monthlyBudget: 100,
+    activeMonths: [3, 4, 5, 6, 7, 8, 9, 10],
+    plannedPurchases: [{ label: 'Season pass', month: 3, amount: 600 }],
+  };
+
+  it('applies the monthly budget only in active months, plus planned purchases', () => {
+    expect(budgetForMonth(golf, '2027-03')).toEqual({
+      totalCents: 70000,
+      monthlyCents: 10000,
+      planned: [{ label: 'Season pass', month: 3, amount: 600 }],
+    });
+    expect(budgetForMonth(golf, '2027-07').totalCents).toBe(10000);
+    expect(budgetForMonth(golf, '2027-01').totalCents).toBe(0);
+    expect(budgetForMonth(golf, '2027-11').totalCents).toBe(0);
+  });
+
+  it('treats no active months as every month', () => {
+    const food = { key: 'food', name: 'Food', monthlyBudget: 500, activeMonths: [] };
+    expect(budgetForMonth(food, '2027-01').totalCents).toBe(50000);
+    expect(budgetForMonth({ ...food, activeMonths: null }, '2027-11').totalCents).toBe(50000);
   });
 });

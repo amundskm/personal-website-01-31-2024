@@ -170,7 +170,10 @@ export const MEMBER_PAGE_QUERY = defineQuery(`
 
 export const SPENDING_PLAN_QUERY = defineQuery(`
   *[_type == "spendingPlan" && _id == "spendingPlan"][0]{
-    "categories": coalesce(categories[]{ "key": _key, name, monthlyBudget, merchantPatterns }, []),
+    "categories": coalesce(categories[]{
+      "key": _key, name, monthlyBudget, merchantPatterns, activeMonths,
+      "plannedPurchases": plannedPurchases[]{ label, month, amount }
+    }, []),
     "stages": coalesce(stages[]{ label, startDate, monthlyTarget }, [])
   }
 `);

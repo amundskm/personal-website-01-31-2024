@@ -117,11 +117,8 @@ export const handler = async (
 async function dashboard(): Promise<FinancesDashboard> {
   const [plan, statements] = await Promise.all([loadPlan(), loadStatements()]);
   return {
-    categories: plan.categories.map(({ key, name, monthlyBudget }) => ({
-      key,
-      name,
-      monthlyBudget,
-    })),
+    // Everything but the merchant patterns
+    categories: plan.categories.map(({ merchantPatterns: _, ...category }) => category),
     stages: plan.stages,
     months: summarizeMonths(statements, plan),
   };
@@ -147,6 +144,10 @@ async function loadPlan(): Promise<SpendingPlan> {
       key: c.key,
       name: c.name ?? 'Unnamed',
       monthlyBudget: c.monthlyBudget ?? 0,
+      activeMonths: c.activeMonths ?? [],
+      plannedPurchases: (c.plannedPurchases ?? [])
+        .filter((p) => p.label && p.month && p.amount !== null)
+        .map((p) => ({ label: p.label!, month: p.month!, amount: p.amount! })),
       merchantPatterns: c.merchantPatterns ?? [],
     })),
     stages: (result?.stages ?? [])

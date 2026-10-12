@@ -12,6 +12,7 @@ import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import {
   type FinancesDashboard,
+  budgetForMonth,
   type LineItem,
   lineRef,
   type Recategorize,
@@ -31,6 +32,8 @@ import {
 
 interface CategoryRow {
   key: string;
+  /** Planned purchases included in this month's budget, e.g. "Season pass $500". */
+  planned?: string;
   name: string;
   budgetCents: number;
   spentCents: number;
@@ -151,7 +154,12 @@ interface CategoryRow {
                             ><span [style.width.%]="row.percent"></span
                           ></span>
                         </th>
-                        <td>{{ cents(row.budgetCents) }}</td>
+                        <td>
+                          {{ cents(row.budgetCents) }}
+                          @if (row.planned) {
+                            <span class="planned">incl. {{ row.planned }}</span>
+                          }
+                        </td>
                         <td>{{ cents(row.spentCents) }}</td>
                         <td>{{ row.over ? '−' + cents(-row.leftCents) : cents(row.leftCents) }}</td>
                       </tr>
@@ -294,11 +302,17 @@ export class FinancesDashboardPage implements OnInit {
     const month = this.current();
     const categories = this.data.hasValue() ? (this.data.value()?.categories ?? []) : [];
     if (!month) return [];
-    const rows = categories.map((c) =>
-      row(c.key, c.name, c.monthlyBudget * 100, month.byCategory[c.key] ?? 0),
-    );
+    const rows = categories.map((c) => {
+      const budget = budgetForMonth(c, month.month);
+      return {
+        ...row(c.key, c.name, budget.totalCents, month.byCategory[c.key] ?? 0),
+        planned: budget.planned.map((p) => `${p.label} ${formatDollars(p.amount)}`).join(', '),
+      };
+    });
     const uncategorized = month.byCategory[UNCATEGORIZED] ?? 0;
-    if (uncategorized) rows.push(row(UNCATEGORIZED, 'Uncategorized', 0, uncategorized));
+    if (uncategorized) {
+      rows.push({ ...row(UNCATEGORIZED, 'Uncategorized', 0, uncategorized), planned: '' });
+    }
     // Biggest budgets first, then anything unbudgeted by spend
     return rows.sort((a, b) => b.budgetCents - a.budgetCents || b.spentCents - a.spentCents);
   });
