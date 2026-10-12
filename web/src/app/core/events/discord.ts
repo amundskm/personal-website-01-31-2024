@@ -72,3 +72,52 @@ export function discordMessage(event: GroupEvent, by: string, url: string): Disc
 function escapeMarkdown(text: string): string {
   return text.replace(/([\\*_~`|>[\]()])/g, '\\$1');
 }
+
+/** How a post went. Anything but 'sent' is logged; none of them throw. */
+export type DiscordResult = 'sent' | 'skipped' | 'gone' | 'rate-limited' | 'failed';
+
+/**
+ * Posts a message to a Discord webhook without ever throwing, so a deleted
+ * channel, a changed webhook or a Discord outage can't break creating events.
+ */
+export async function sendToDiscord(
+  webhook: string | undefined,
+  message: DiscordMessage,
+  options: { fetch?: typeof fetch; timeoutMs?: number; log?: (text: string) => void } = {},
+): Promise<DiscordResult> {
+  const log = options.log ?? ((text: string) => console.warn(text));
+  const url = webhook?.trim() ?? '';
+  if (!isDiscordWebhook(url)) {
+    log(
+      'Discord: DISCORD_WEBHOOK_URL is missing or not a Discord webhook URL, so nothing was posted.',
+    );
+    return 'skipped';
+  }
+  try {
+    const response = await (options.fetch ?? fetch)(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(message),
+      signal: AbortSignal.timeout(options.timeoutMs ?? 5000),
+    });
+    if (response.ok) return 'sent';
+    if (response.status === 404 || response.status === 401 || response.status === 403) {
+      log(
+        `Discord: the webhook no longer exists (HTTP ${response.status}); the channel or webhook ` +
+          'was probably deleted. Update the DISCORD_WEBHOOK_URL secret and redeploy.',
+      );
+      return 'gone';
+    }
+    if (response.status === 429) {
+      log('Discord: rate limited (HTTP 429), so this post was skipped.');
+      return 'rate-limited';
+    }
+    log(`Discord: post failed (HTTP ${response.status}).`);
+    return 'failed';
+  } catch (error) {
+    log(
+      `Discord: could not reach Discord (${(error as Error)?.name ?? 'error'}), so this post was skipped.`,
+    );
+    return 'failed';
+  }
+}

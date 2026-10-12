@@ -32,8 +32,8 @@ import { env } from '$amplify/env/group-events';
 import { hasAnyRole } from '../../../src/app/core/auth/roles';
 import {
   discordMessage,
-  isDiscordWebhook,
   postsToDiscord,
+  sendToDiscord,
 } from '../../../src/app/core/events/discord';
 import {
   type CommentInput,
@@ -1290,26 +1290,17 @@ async function notify(
   );
 }
 
-/** Posts a new poll or event for everyone to the Discord channel. A failure is logged, not fatal. */
+/**
+ * Posts a new poll or event for everyone to the Discord channel. Never throws:
+ * a deleted channel or webhook, rate limiting or an outage is only logged.
+ */
 async function postToDiscord(event: GroupEvent, caller: Caller): Promise<void> {
-  const webhook = env.DISCORD_WEBHOOK_URL?.trim();
-  if (!webhook || !isDiscordWebhook(webhook)) {
-    console.warn('DISCORD_WEBHOOK_URL is missing or not a Discord webhook; not posting');
-    return;
-  }
-  const members = await loadMembers();
+  const members = await loadMembers().catch(() => []);
   const by = members.find((m) => m.id === caller.id)?.name ?? 'Someone';
-  try {
-    const response = await fetch(webhook, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(discordMessage(event, by, `${env.SITE_URL}/events/${event.id}`)),
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!response.ok) console.warn(`Discord responded ${response.status}`, await response.text());
-  } catch (error) {
-    console.warn('Could not post to Discord:', String(error));
-  }
+  await sendToDiscord(
+    env.DISCORD_WEBHOOK_URL,
+    discordMessage(event, by, `${env.SITE_URL}/events/${event.id}`),
+  );
 }
 
 /** Sends one email to one member. A failure is logged, not fatal. */

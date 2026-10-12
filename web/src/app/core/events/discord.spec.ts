@@ -1,4 +1,4 @@
-import { discordMessage, isDiscordWebhook, postsToDiscord } from './discord';
+import { discordMessage, isDiscordWebhook, postsToDiscord, sendToDiscord } from './discord';
 import type { GroupEvent } from './events';
 
 // Made-up event only: the repository is public.
@@ -71,5 +71,58 @@ describe('Discord posts', () => {
     expect(isDiscordWebhook('https://discordapp.com/api/webhooks/123/abc')).toBe(true);
     expect(isDiscordWebhook('https://evil.example/api/webhooks/123/abc')).toBe(false);
     expect(isDiscordWebhook('http://discord.com/api/webhooks/123/abc')).toBe(false);
+  });
+});
+
+describe('sendToDiscord fails gracefully', () => {
+  const webhook = 'https://discord.com/api/webhooks/123/abc';
+  const message = discordMessage(poll, 'Mike', url);
+  const run = async (fetchImpl: typeof fetch, hook = webhook) => {
+    const logs: string[] = [];
+    const result = await sendToDiscord(hook, message, {
+      fetch: fetchImpl,
+      timeoutMs: 50,
+      log: (text) => logs.push(text),
+    });
+    return { result, logs };
+  };
+  const respond = (status: number) =>
+    (() => Promise.resolve(new Response(null, { status }))) as typeof fetch;
+
+  it('posts normally', async () => {
+    expect((await run(respond(204))).result).toBe('sent');
+  });
+
+  it('says the webhook is gone when the channel or webhook was deleted', async () => {
+    const { result, logs } = await run(respond(404));
+    expect(result).toBe('gone');
+    expect(logs[0]).toContain('Update the DISCORD_WEBHOOK_URL secret');
+    expect((await run(respond(401))).result).toBe('gone');
+  });
+
+  it('skips when rate limited or Discord errors', async () => {
+    expect((await run(respond(429))).result).toBe('rate-limited');
+    expect((await run(respond(500))).result).toBe('failed');
+  });
+
+  it('never throws on network errors or timeouts', async () => {
+    const offline = (() => Promise.reject(new TypeError('fetch failed'))) as typeof fetch;
+    expect((await run(offline)).result).toBe('failed');
+    const hangs = ((_: unknown, init?: RequestInit) =>
+      new Promise((_resolve, reject) =>
+        init?.signal?.addEventListener('abort', () => reject(init.signal!.reason)),
+      )) as typeof fetch;
+    expect((await run(hangs)).result).toBe('failed');
+  });
+
+  it('skips without a valid webhook URL', async () => {
+    let called = false;
+    const spy = (() => {
+      called = true;
+      return Promise.resolve(new Response(null, { status: 204 }));
+    }) as typeof fetch;
+    expect((await run(spy, '')).result).toBe('skipped');
+    expect((await run(spy, 'https://evil.example/hook')).result).toBe('skipped');
+    expect(called).toBe(false);
   });
 });
