@@ -44,7 +44,6 @@ const RSVP_LABELS: Record<Rsvp, string> = { going: 'Going', maybe: 'Maybe', no: 
             <a routerLink="/profile" fragment="calendar" class="btn btn--text"
               >Subscribe to calendar</a
             >
-            <a routerLink="/profile" class="btn btn--secondary">Your profile</a>
             <a routerLink="new" class="btn btn--primary">New event</a>
           </div>
         </header>

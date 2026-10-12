@@ -199,6 +199,7 @@ For a sandbox, use `npx ampx sandbox secret set SANITY_PRIVATE_WRITE_TOKEN`.
   - With a list, the organizer chooses whether only invitees can see the event, or all members can see it while only invitees get emails, vote and RSVP.
   - Hidden events act as missing for everyone else (admins can still see them).
   - People added later get the invitation email. The calendar feed only includes events you're invited to.
+- **Discord:** new polls and new set-date events for **everyone** are posted to a Discord channel via a webhook: title, dates (plus a poll's deadline) and a link that needs a login. No location or details, and no pings. Events for specific people are never posted. The webhook URL is the Amplify secret `DISCORD_WEBHOOK_URL`, and a failed post never blocks creating the event. Secrets load when the function starts, so after changing the URL choose **Redeploy this version** on the latest `main` build to apply it right away. Don't delete the secret: deploys check that it exists.
 - **Joining:** on a visible event with an invite list, any member can **Join** (added to the list, organizer emailed under "Activity on my events"). Anyone on the list except the organizer can **Leave**, which removes their votes and RSVP. Hidden events can't be joined.
 - **Poll deadlines:** off by default. The organizer can set a "voting closes" date and time; with no time, it closes at 11:59 PM Central.
   - After the deadline, the server stops accepting votes.

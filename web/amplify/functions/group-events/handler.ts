@@ -31,6 +31,11 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from '$amplify/env/group-events';
 import { hasAnyRole } from '../../../src/app/core/auth/roles';
 import {
+  discordMessage,
+  postsToDiscord,
+  sendToDiscord,
+} from '../../../src/app/core/events/discord';
+import {
   type CommentInput,
   type EventComment,
   isReactionKey,
@@ -304,6 +309,7 @@ async function create(caller: Caller, body: Record<string, unknown>): Promise<Re
     new PutCommand({ TableName: TABLE, Item: { pk: eventKey(event.id), type: 'event', ...event } }),
   );
   await notify(confirmed ? 'confirmed' : 'poll', event, caller);
+  if (postsToDiscord(event)) await postToDiscord(event, caller);
   return json(201, event);
 }
 
@@ -1281,6 +1287,19 @@ async function notify(
       });
       await sendEmail(member, email, kind);
     }),
+  );
+}
+
+/**
+ * Posts a new poll or event for everyone to the Discord channel. Never throws:
+ * a deleted channel or webhook, rate limiting or an outage is only logged.
+ */
+async function postToDiscord(event: GroupEvent, caller: Caller): Promise<void> {
+  const members = await loadMembers().catch(() => []);
+  const by = members.find((m) => m.id === caller.id)?.name ?? 'Someone';
+  await sendToDiscord(
+    env.DISCORD_WEBHOOK_URL,
+    discordMessage(event, by, `${env.SITE_URL}/events/${event.id}`),
   );
 }
 
