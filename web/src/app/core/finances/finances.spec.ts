@@ -1,11 +1,13 @@
 import {
   lineRef,
+  budgetForMonth,
   matchCategory,
   monthLineItems,
   monthWindow,
   type SpendingPlan,
   type Statement,
   stageFor,
+  statementMonth,
   suggestPattern,
   summarizeMonths,
   targetForMonth,
@@ -266,5 +268,39 @@ describe('monthLineItems', () => {
       const sum = items.filter((i) => i.categoryKey === key).reduce((t, i) => t + i.amountCents, 0);
       expect(sum).toBe(cents);
     }
+  });
+});
+
+describe('statementMonth', () => {
+  it('is the closing month, for the whole statement', () => {
+    expect(statementMonth({ closingDate: '2026-10-04' })).toBe('2026-10');
+    expect(statementMonth({ closingDate: '2026-01-04' })).toBe('2026-01');
+  });
+});
+
+describe('budgetForMonth', () => {
+  const golf = {
+    key: 'golf',
+    name: 'Golf',
+    monthlyBudget: 100,
+    activeMonths: [3, 4, 5, 6, 7, 8, 9, 10],
+    plannedPurchases: [{ label: 'Season pass', month: 3, amount: 600 }],
+  };
+
+  it('applies the monthly budget only in active months, plus planned purchases', () => {
+    expect(budgetForMonth(golf, '2027-03')).toEqual({
+      totalCents: 70000,
+      monthlyCents: 10000,
+      planned: [{ label: 'Season pass', month: 3, amount: 600 }],
+    });
+    expect(budgetForMonth(golf, '2027-07').totalCents).toBe(10000);
+    expect(budgetForMonth(golf, '2027-01').totalCents).toBe(0);
+    expect(budgetForMonth(golf, '2027-11').totalCents).toBe(0);
+  });
+
+  it('treats no active months as every month', () => {
+    const food = { key: 'food', name: 'Food', monthlyBudget: 500, activeMonths: [] };
+    expect(budgetForMonth(food, '2027-01').totalCents).toBe(50000);
+    expect(budgetForMonth({ ...food, activeMonths: null }, '2027-11').totalCents).toBe(50000);
   });
 });

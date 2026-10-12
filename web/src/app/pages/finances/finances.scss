@@ -249,3 +249,10 @@ tr.is-over .bar span {
 .move-message {
   margin: var(--space-2) 0 0;
 }
+
+.planned {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  white-space: nowrap;
+}

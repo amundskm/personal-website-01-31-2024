@@ -163,7 +163,7 @@ If someone is added to a group while signed in, they need to log out and back in
   merchant patterns and accept uploads. Both are checked in the Lambda, not just in the UI.
 - **Tests** use made-up data. Keep it that way.
 
-Statements are grouped by the month of their closing date, so one Chase statement is one dashboard month.
+Each statement counts as a whole toward the month it closes in (Jan 2 – Feb 1 counts as February); statements are never split by day. A category can be **seasonal**: its monthly budget applies only in its *active months*, and *planned one-time purchases* (e.g. a season pass) are added to a given month's budget.
 Each transaction gets the category whose longest merchant pattern it contains. When you pick a category
 for a new merchant and leave **Remember** ticked, the pattern is added to the plan for later uploads.
 

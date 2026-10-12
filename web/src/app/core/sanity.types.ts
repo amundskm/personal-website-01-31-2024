@@ -207,6 +207,14 @@ export type SpendingPlan = {
     name?: string;
     monthlyBudget?: number;
     merchantPatterns?: Array<string>;
+    activeMonths?: Array<number>;
+    plannedPurchases?: Array<{
+      label?: string;
+      month?: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+      amount?: number;
+      _type: 'plannedPurchase';
+      _key: string;
+    }>;
     _type: 'budgetCategory';
     _key: string;
   }>;
@@ -1685,7 +1693,7 @@ export type MEMBER_PAGE_QUERY_RESULT = {
 
 // Source: ../web/src/app/core/queries.ts
 // Variable: SPENDING_PLAN_QUERY
-// Query: *[_type == "spendingPlan" && _id == "spendingPlan"][0]{    "categories": coalesce(categories[]{ "key": _key, name, monthlyBudget, merchantPatterns }, []),    "stages": coalesce(stages[]{ label, startDate, monthlyTarget }, [])  }
+// Query: *[_type == "spendingPlan" && _id == "spendingPlan"][0]{    "categories": coalesce(categories[]{      "key": _key, name, monthlyBudget, merchantPatterns, activeMonths,      "plannedPurchases": plannedPurchases[]{ label, month, amount }    }, []),    "stages": coalesce(stages[]{ label, startDate, monthlyTarget }, [])  }
 export type SPENDING_PLAN_QUERY_RESULT = {
   categories:
     | Array<{
@@ -1693,6 +1701,12 @@ export type SPENDING_PLAN_QUERY_RESULT = {
         name: string | null;
         monthlyBudget: number | null;
         merchantPatterns: Array<string> | null;
+        activeMonths: Array<number> | null;
+        plannedPurchases: Array<{
+          label: string | null;
+          month: 1 | 10 | 11 | 12 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | null;
+          amount: number | null;
+        }> | null;
       }>
     | Array<never>;
   stages:

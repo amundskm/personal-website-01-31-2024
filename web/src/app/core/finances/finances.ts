@@ -10,15 +10,37 @@
 export interface PlanCategory {
   key: string;
   name: string;
-  /** Dollars per month. */
+  /** Dollars per month (in active months). */
   monthlyBudget: number;
+  /** Months (1–12) the monthly budget applies in; empty or missing = every month. */
+  activeMonths?: number[] | null;
+  /** One-time purchases added to a month's budget every year. */
+  plannedPurchases?: PlannedPurchase[] | null;
   /** Case-insensitive substrings of the statement description. Admin only. */
   merchantPatterns?: string[] | null;
 }
 
+export interface PlannedPurchase {
+  label: string;
+  /** 1–12. */
+  month: number;
+  /** Dollars. */
+  amount: number;
+}
+
+/** A category's budget for one statement month (`YYYY-MM`), in cents. */
+export function budgetForMonth(category: PlanCategory, month: string) {
+  const monthNumber = Number(month.slice(5, 7));
+  const active = !category.activeMonths?.length || category.activeMonths.includes(monthNumber);
+  const planned = (category.plannedPurchases ?? []).filter((p) => p.month === monthNumber);
+  const monthlyCents = active ? Math.round(category.monthlyBudget * 100) : 0;
+  const plannedCents = planned.reduce((sum, p) => sum + Math.round(p.amount * 100), 0);
+  return { totalCents: monthlyCents + plannedCents, monthlyCents, planned };
+}
+
 export interface PlanStage {
   label: string;
-  /** ISO date the stage's target applies from (by statement closing date). */
+  /** ISO date the stage's target applies from (to statement months ending on or after it). */
   startDate: string;
   /** Dollars per month. */
   monthlyTarget: number;
@@ -67,9 +89,9 @@ export interface StatementInfo {
   uploadedAt?: string;
 }
 
-/** One statement month (by closing date), as the dashboard shows it. */
+/** One statement month, as the dashboard shows it. */
 export interface MonthSummary {
-  /** `YYYY-MM` of the statements' closing date. */
+  /** `YYYY-MM` the statements close in (see `statementMonth`). */
   month: string;
   statements: StatementInfo[];
   /** Spending after refunds and friend repayments. */
@@ -131,6 +153,13 @@ export interface NewRule {
 export const UNCATEGORIZED = '_uncategorized';
 
 export const statementId = (last4: string, closingDate: string) => `${last4}_${closingDate}`;
+
+/**
+ * The month a whole statement counts toward: its closing month (a Jan 2 – Feb 1
+ * statement is February). Statements are never split by day.
+ */
+export const statementMonth = (statement: Pick<Statement, 'closingDate'>) =>
+  statement.closingDate.slice(0, 7);
 
 export const countsAsSpending = (tx: Pick<StatementTransaction, 'kind'>) => tx.kind !== 'payment';
 
@@ -206,7 +235,7 @@ export function monthLineItems(
   const keyFor = categoryKeyFor(plan);
   const items: LineItem[] = [];
   for (const statement of statements) {
-    if (statement.closingDate.slice(0, 7) !== month) continue;
+    if (statementMonth(statement) !== month) continue;
     statement.transactions.forEach((tx, index) => {
       if (tx.kind === 'payment') return;
       items.push({
@@ -243,7 +272,7 @@ export function summarizeMonths(statements: Statement[], plan: SpendingPlan): Mo
   const months = new Map<string, MonthSummary>();
 
   for (const statement of statements) {
-    const month = statement.closingDate.slice(0, 7);
+    const month = statementMonth(statement);
     let summary = months.get(month);
     if (!summary) {
       summary = {
@@ -275,11 +304,7 @@ export function summarizeMonths(statements: Statement[], plan: SpendingPlan): Mo
 
   return [...months.values()]
     .map((summary) => {
-      const latestClose = summary.statements
-        .map((s) => s.closingDate)
-        .sort()
-        .at(-1)!;
-      const stage = stageFor(plan.stages, latestClose);
+      const stage = stageFor(plan.stages, `${summary.month}-31`);
       summary.statements.sort((a, b) => a.closingDate.localeCompare(b.closingDate));
       return { ...summary, target: stage?.monthlyTarget ?? null, stageLabel: stage?.label ?? null };
     })
