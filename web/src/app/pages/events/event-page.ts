@@ -9,6 +9,7 @@ import {
   resource,
   signal,
 } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import {
@@ -38,6 +39,9 @@ import { NotFound } from '../not-found/not-found';
 import { EventComments } from './event-comments';
 import { MemberAvatar } from '../../shared/member-avatar/member-avatar';
 import { NamePrompt } from './name-prompt';
+
+/** How often an open event page checks for other people's changes. */
+const REFRESH_MS = 25_000;
 
 const VOTES: { value: Vote; label: string; symbol: string }[] = [
   { value: 'yes', label: 'Yes', symbol: '✓' },
@@ -362,6 +366,37 @@ export class EventPage {
   });
 
   protected readonly busy = signal(false);
+  private refreshing = false;
+
+  /**
+   * Re-fetches the event in the background. Skipped while hidden, loading or
+   * mid-action; a failed check is ignored (the next one tries again), so a
+   * network blip never replaces the page with an error.
+   */
+  private async refreshQuietly(): Promise<void> {
+    if (
+      this.refreshing ||
+      this.busy() ||
+      document.visibilityState !== 'visible' ||
+      !this.data.hasValue() ||
+      this.data.isLoading()
+    ) {
+      return;
+    }
+    this.refreshing = true;
+    const id = this.id();
+    try {
+      const latest = await this.auth.fetchMembersApi<EventDetail>(
+        `/events/${encodeURIComponent(id)}`,
+      );
+      // Ignore the answer if the user moved to another event or started an action meanwhile
+      if (latest && id === this.id() && !this.busy()) this.data.set(latest);
+    } catch {
+      // Try again on the next tick
+    } finally {
+      this.refreshing = false;
+    }
+  }
   protected readonly message = signal<{ text: string; error: boolean } | null>(null);
   protected readonly votes = VOTES;
   protected readonly rsvps = RSVPS;
@@ -465,7 +500,20 @@ export class EventPage {
 
   constructor() {
     const tick = setInterval(() => this.now.set(new Date()), 60_000);
-    inject(DestroyRef).onDestroy(() => clearInterval(tick));
+
+    // Pick up other people's comments, votes and RSVPs while the page is open:
+    // every 25 seconds while the tab is visible, and right away on returning to it
+    const document = inject(DOCUMENT);
+    const poll = setInterval(() => void this.refreshQuietly(), REFRESH_MS);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void this.refreshQuietly();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    inject(DestroyRef).onDestroy(() => {
+      clearInterval(tick);
+      clearInterval(poll);
+      document.removeEventListener('visibilitychange', onVisible);
+    });
     effect(() => {
       const d = this.detail();
       if (d) {
