@@ -100,6 +100,10 @@ export interface GroupEvent {
   voteBy?: VoteDeadline | null;
   /** When the organizer was told voting closed (so it's sent once). */
   voteClosedNotified?: string | null;
+  /** Cover image shown on the event. */
+  image?: Attachment | null;
+  /** Up to MAX_FILES files to download. */
+  attachments?: Attachment[];
 }
 
 /** A poll's voting deadline: a local date, and a time (end of day if none). */
@@ -619,4 +623,79 @@ export function restoredStatus(
   event: Pick<GroupEvent, 'cancelledFrom' | 'confirmed'>,
 ): Exclude<EventStatus, 'cancelled'> {
   return event.cancelledFrom ?? (event.confirmed ? 'confirmed' : 'polling');
+}
+
+// ---------------------------------------------------------------------------
+// Attachments: one cover image and up to 5 files per event
+// ---------------------------------------------------------------------------
+
+export interface Attachment {
+  id: string;
+  /** Shown and used for the download name. */
+  name: string;
+  /** Bytes. */
+  size: number;
+  /** MIME type. */
+  type: string;
+  uploadedAt: string;
+  /** Storage key; the API adds a signed `url` when sending it out. */
+  key?: string;
+  url?: string;
+}
+
+export type AttachmentKind = 'image' | 'file';
+
+/** POST /events/{id}/attachments: ask for an upload link. */
+export interface UploadRequest {
+  kind: AttachmentKind;
+  name: string;
+  size: number;
+  type: string;
+}
+
+export const MAX_FILES = 5;
+export const MAX_FILE_BYTES = 10 * 1024 * 1024;
+/** Cover images are resized in the browser first, so they're small. */
+export const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
+export const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+/** A file name safe for storage keys and downloads: no paths, odd characters or huge lengths. */
+export function safeFileName(name: string): string {
+  const base = name.split(/[\\/]/).pop() ?? '';
+  const cleaned = base
+    .normalize('NFKD')
+    .replace(/[^\w.\- ()]+/g, '_')
+    .replace(/\s+/g, ' ')
+    .replace(/^[.\s]+/, '')
+    .trim();
+  if (!cleaned) return 'file';
+  if (cleaned.length <= 100) return cleaned;
+  const dot = cleaned.lastIndexOf('.');
+  const ext = dot > 0 && cleaned.length - dot <= 10 ? cleaned.slice(dot) : '';
+  return cleaned.slice(0, 100 - ext.length) + ext;
+}
+
+/** Checks an upload request. Returns an error message, or null if valid. */
+export function validateUploadRequest(value: unknown, fileCount: number): string | null {
+  const input = value as Partial<UploadRequest> | null;
+  if (!input || typeof input !== 'object') return 'Missing upload';
+  if (input.kind !== 'image' && input.kind !== 'file') return 'Invalid upload type';
+  if (typeof input.name !== 'string' || !input.name.trim()) return 'The file needs a name.';
+  if (typeof input.type !== 'string' || input.type.length > 200) return 'Invalid file type';
+  if (!Number.isInteger(input.size) || input.size! <= 0) return 'That file is empty.';
+  if (input.kind === 'image') {
+    if (!IMAGE_TYPES.includes(input.type)) return 'Use a JPEG, PNG or WebP image.';
+    if (input.size! > MAX_IMAGE_BYTES) return 'That image is too large.';
+  } else {
+    if (fileCount >= MAX_FILES) return `An event can have up to ${MAX_FILES} files.`;
+    if (input.size! > MAX_FILE_BYTES) return 'Files can be up to 10 MB.';
+  }
+  return null;
+}
+
+/** "512 KB", "3.4 MB". */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

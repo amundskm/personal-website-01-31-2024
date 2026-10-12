@@ -4,7 +4,7 @@ import { CorsHttpMethod, HttpApi, HttpMethod } from 'aws-cdk-lib/aws-apigatewayv
 import { HttpJwtAuthorizer } from 'aws-cdk-lib/aws-apigatewayv2-authorizers';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import { AttributeType, BillingMode, Table } from 'aws-cdk-lib/aws-dynamodb';
-import { BlockPublicAccess, Bucket, BucketEncryption } from 'aws-cdk-lib/aws-s3';
+import { BlockPublicAccess, Bucket, BucketEncryption, HttpMethods } from 'aws-cdk-lib/aws-s3';
 import { Rule, Schedule } from 'aws-cdk-lib/aws-events';
 import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
 import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
@@ -120,11 +120,28 @@ eventsTable.addGlobalSecondaryIndex({
 });
 eventsTable.grantReadWriteData(eventsLambda);
 // Profile photos: private; the Lambda hands out short-lived signed links
+// Profile photos and event attachments (the logical id predates attachments)
 const avatarBucket = new Bucket(eventsStack, 'MemberAvatars', {
   blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
   encryption: BucketEncryption.S3_MANAGED,
   enforceSSL: true,
   removalPolicy: RemovalPolicy.RETAIN,
+  // Browsers upload attachments straight here with a signed PUT link
+  cors: [
+    {
+      allowedMethods: [HttpMethods.PUT],
+      allowedOrigins: [
+        'https://neiaboiz.com',
+        'https://www.neiaboiz.com',
+        'https://*.amplifyapp.com',
+        'http://localhost:4200',
+      ],
+      allowedHeaders: ['Content-Type'],
+      maxAge: 3600,
+    },
+  ],
+  // Uploads that were never confirmed
+  lifecycleRules: [{ prefix: 'pending/', expiration: Duration.days(1) }],
 });
 avatarBucket.grantReadWrite(eventsLambda);
 avatarBucket.grantDelete(eventsLambda);

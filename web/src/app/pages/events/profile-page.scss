@@ -1,0 +1,33 @@
+// Profile
+.profile-card {
+  margin-bottom: var(--space-6);
+}
+
+.profile-photo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+
+  label.btn {
+    cursor: pointer;
+  }
+
+  label.btn:focus-within {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+.profile-pref {
+  align-items: flex-start;
+
+  > span {
+    display: grid;
+  }
+
+  input {
+    margin-top: 0.3rem;
+  }
+}

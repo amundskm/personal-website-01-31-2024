@@ -85,7 +85,10 @@ const RSVP_LABELS: Record<Rsvp, string> = { going: 'Going', maybe: 'Maybe', no: 
               <article class="ev-card">
                 <h2>Upcoming</h2>
                 @for (event of upcoming(); track event.id) {
-                  <a class="ev-item" [routerLink]="[event.id]">
+                  <a class="ev-item" [class.has-thumb]="event.image?.url" [routerLink]="[event.id]">
+                    @if (event.image?.url) {
+                      <img class="ev-thumb" [src]="event.image!.url" alt="" loading="lazy" />
+                    }
                     <strong>{{ event.title }}</strong>
                     <span class="ev-meta">{{ when(event) }}</span>
                     @if (event.location) {

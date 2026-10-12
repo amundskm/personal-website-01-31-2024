@@ -1,4 +1,7 @@
 import {
+  formatBytes,
+  safeFileName,
+  validateUploadRequest,
   formatDeadline,
   pollJustClosed,
   voteDeadline,
@@ -413,5 +416,36 @@ describe('voting deadlines', () => {
         voteBy: { date: '2030-06-15' },
       }),
     ).toMatch(/set date/);
+  });
+});
+
+describe('attachments', () => {
+  it('makes file names safe for storage and downloads', () => {
+    expect(safeFileName('Lake map.pdf')).toBe('Lake map.pdf');
+    expect(safeFileName('C:\\Users\\me\\..\\plan.docx')).toBe('plan.docx');
+    expect(safeFileName('../../etc/passwd')).toBe('passwd');
+    expect(safeFileName('menu<script>.pdf')).toBe('menu_script_.pdf');
+    expect(safeFileName('.hidden')).toBe('hidden');
+    expect(safeFileName('   ')).toBe('file');
+    const long = safeFileName('x'.repeat(300) + '.pdf');
+    expect(long.length).toBe(100);
+    expect(long.endsWith('.pdf')).toBe(true);
+  });
+
+  it('checks uploads against type, size and the file limit', () => {
+    const file = { kind: 'file', name: 'map.pdf', size: 1000, type: 'application/pdf' };
+    expect(validateUploadRequest(file, 0)).toBeNull();
+    expect(validateUploadRequest(file, 5)).toMatch(/up to 5/);
+    expect(validateUploadRequest({ ...file, size: 11 * 1024 * 1024 }, 0)).toMatch(/10 MB/);
+    expect(validateUploadRequest({ ...file, size: 0 }, 0)).toMatch(/empty/);
+    const image = { kind: 'image', name: 'cover.jpg', size: 500_000, type: 'image/jpeg' };
+    expect(validateUploadRequest(image, 5)).toBeNull(); // the cover image doesn't count
+    expect(validateUploadRequest({ ...image, type: 'image/gif' }, 0)).toMatch(/JPEG/);
+  });
+
+  it('formats sizes', () => {
+    expect(formatBytes(512)).toBe('512 B');
+    expect(formatBytes(2048)).toBe('2 KB');
+    expect(formatBytes(3.4 * 1024 * 1024)).toBe('3.4 MB');
   });
 });
