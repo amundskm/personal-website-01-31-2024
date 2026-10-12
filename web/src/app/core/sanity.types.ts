@@ -196,6 +196,44 @@ export type Seo = {
   noIndex?: boolean;
 };
 
+export type MemberPage = {
+  _id: string;
+  _type: 'memberPage';
+  _createdAt: string;
+  _updatedAt: string;
+  _rev: string;
+  title?: string;
+  slug?: Slug;
+  audiences?: Array<string>;
+  summary?: string;
+  sections?: Array<
+    | ({
+        _key: string;
+      } & HeroBlock)
+    | ({
+        _key: string;
+      } & RichTextBlock)
+    | ({
+        _key: string;
+      } & ImageBlock)
+    | ({
+        _key: string;
+      } & TwoColumnBlock)
+    | ({
+        _key: string;
+      } & SkillsBlock)
+    | ({
+        _key: string;
+      } & CtaBlock)
+  >;
+};
+
+export type Slug = {
+  _type: 'slug';
+  current?: string;
+  source?: string;
+};
+
 export type SiteSettings = {
   _id: string;
   _type: 'siteSettings';
@@ -243,12 +281,6 @@ export type Project = {
   featured?: boolean;
   order?: number;
   seo?: Seo;
-};
-
-export type Slug = {
-  _type: 'slug';
-  current?: string;
-  source?: string;
 };
 
 export type Post = {
@@ -444,9 +476,10 @@ export type AllSanitySchemaTypes =
   | PostReference
   | Link
   | Seo
+  | MemberPage
+  | Slug
   | SiteSettings
   | Project
-  | Slug
   | Post
   | Page
   | SanityImageCrop
@@ -524,7 +557,7 @@ export type SETTINGS_QUERY_RESULT = {
 
 // Source: ../web/src/app/core/queries.ts
 // Variable: PAGE_QUERY
-// Query: *[_type == "page" && slug.current == $slug][0]{    _id, title, "slug": slug.current,    seo {   title, description, noIndex, image {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } },    sections[]{      ...,      _type == "heroBlock" => {        image {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } },        buttons[]{   _key, label, kind, path, url, style,  "internal": internal->{ _type, "slug": slug.current } }      },      _type == "richTextBlock" => {        content[]{   ...,  _type == "accessibleImage" => {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } }      },      _type == "imageBlock" => {        image {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } }      },      _type == "twoColumnBlock" => {        left { content[]{   ...,  _type == "accessibleImage" => {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } }, image {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } },        right { content[]{   ...,  _type == "accessibleImage" => {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } }, image {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } }      },      _type == "ctaBlock" => {        button {   _key, label, kind, path, url, style,  "internal": internal->{ _type, "slug": slug.current } }      },      _type == "projectGridBlock" => {        "items": select(          mode == "manual" => projects[]->{   _id, title, "slug": slug.current, summary, techStack, year, featured,  coverImage {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } },          mode == "all" => *[_type == "project" && defined(slug.current)]            | order(order asc, _createdAt desc)[0...24]{   _id, title, "slug": slug.current, summary, techStack, year, featured,  coverImage {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } },          *[_type == "project" && defined(slug.current) && featured == true]            | order(order asc, _createdAt desc)[0...24]{   _id, title, "slug": slug.current, summary, techStack, year, featured,  coverImage {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } }        )      },      _type == "postListBlock" => {        "items": *[_type == "post" && defined(slug.current)]          | order(publishedAt desc)[0...24]{   _id, title, "slug": slug.current, excerpt, publishedAt, tags,  coverImage {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } }      }    }  }
+// Query: *[_type == "page" && slug.current == $slug][0]{    _id, title, "slug": slug.current,    seo {   title, description, noIndex, image {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } },    sections[]{   ...,  _type == "heroBlock" => {    image {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } },    buttons[]{   _key, label, kind, path, url, style,  "internal": internal->{ _type, "slug": slug.current } }  },  _type == "richTextBlock" => {    content[]{   ...,  _type == "accessibleImage" => {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } }  },  _type == "imageBlock" => {    image {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } }  },  _type == "twoColumnBlock" => {    left { content[]{   ...,  _type == "accessibleImage" => {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } }, image {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } },    right { content[]{   ...,  _type == "accessibleImage" => {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } }, image {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } }  },  _type == "ctaBlock" => {    button {   _key, label, kind, path, url, style,  "internal": internal->{ _type, "slug": slug.current } }  },  _type == "projectGridBlock" => {    "items": select(      mode == "manual" => projects[]->{   _id, title, "slug": slug.current, summary, techStack, year, featured,  coverImage {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } },      mode == "all" => *[_type == "project" && defined(slug.current)]        | order(order asc, _createdAt desc)[0...24]{   _id, title, "slug": slug.current, summary, techStack, year, featured,  coverImage {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } },      *[_type == "project" && defined(slug.current) && featured == true]        | order(order asc, _createdAt desc)[0...24]{   _id, title, "slug": slug.current, summary, techStack, year, featured,  coverImage {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } }    )  },  _type == "postListBlock" => {    "items": *[_type == "post" && defined(slug.current)]      | order(publishedAt desc)[0...24]{   _id, title, "slug": slug.current, excerpt, publishedAt, tags,  coverImage {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } }  } }  }
 export type PAGE_QUERY_RESULT = {
   _id: string;
   title: string | null;
@@ -1274,3 +1307,354 @@ export type PROJECT_QUERY_RESULT = {
 // Variable: PROJECT_SLUGS_QUERY
 // Query: *[_type == "project" && defined(slug.current)].slug.current
 export type PROJECT_SLUGS_QUERY_RESULT = Array<string | null>;
+
+// Source: ../web/src/app/core/queries.ts
+// Variable: MEMBER_PAGES_QUERY
+// Query: *[_type == "memberPage" && defined(slug.current) && ($isAdmin || count(audiences[@ in $groups]) > 0)]    | order(title asc){ _id, title, "slug": slug.current, summary, audiences }
+export type MEMBER_PAGES_QUERY_RESULT = Array<{
+  _id: string;
+  title: string | null;
+  slug: string | null;
+  summary: string | null;
+  audiences: Array<string> | null;
+}>;
+
+// Source: ../web/src/app/core/queries.ts
+// Variable: MEMBER_PAGE_QUERY
+// Query: *[_type == "memberPage" && slug.current == $slug && ($isAdmin || count(audiences[@ in $groups]) > 0)][0]{    _id, title, "slug": slug.current, summary, audiences,    sections[]{   ...,  _type == "heroBlock" => {    image {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } },    buttons[]{   _key, label, kind, path, url, style,  "internal": internal->{ _type, "slug": slug.current } }  },  _type == "richTextBlock" => {    content[]{   ...,  _type == "accessibleImage" => {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } }  },  _type == "imageBlock" => {    image {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } }  },  _type == "twoColumnBlock" => {    left { content[]{   ...,  _type == "accessibleImage" => {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } }, image {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } },    right { content[]{   ...,  _type == "accessibleImage" => {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } }, image {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } }  },  _type == "ctaBlock" => {    button {   _key, label, kind, path, url, style,  "internal": internal->{ _type, "slug": slug.current } }  },  _type == "projectGridBlock" => {    "items": select(      mode == "manual" => projects[]->{   _id, title, "slug": slug.current, summary, techStack, year, featured,  coverImage {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } },      mode == "all" => *[_type == "project" && defined(slug.current)]        | order(order asc, _createdAt desc)[0...24]{   _id, title, "slug": slug.current, summary, techStack, year, featured,  coverImage {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } },      *[_type == "project" && defined(slug.current) && featured == true]        | order(order asc, _createdAt desc)[0...24]{   _id, title, "slug": slug.current, summary, techStack, year, featured,  coverImage {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } }    )  },  _type == "postListBlock" => {    "items": *[_type == "post" && defined(slug.current)]      | order(publishedAt desc)[0...24]{   _id, title, "slug": slug.current, excerpt, publishedAt, tags,  coverImage {   ...,  asset->{ _id, url, metadata { lqip, dimensions { width, height, aspectRatio } } } } }  } }  }
+export type MEMBER_PAGE_QUERY_RESULT = {
+  _id: string;
+  title: string | null;
+  slug: string | null;
+  summary: string | null;
+  audiences: Array<string> | null;
+  sections: Array<
+    | {
+        _key: string;
+        _type: 'ctaBlock';
+        heading?: string;
+        text?: string;
+        button: {
+          _key: null;
+          label: string | null;
+          kind: 'external' | 'internal' | null;
+          path: string | null;
+          url: string | null;
+          style: 'primary' | 'secondary' | 'text' | null;
+          internal:
+            | {
+                _type: 'page';
+                slug: string | null;
+              }
+            | {
+                _type: 'post';
+                slug: string | null;
+              }
+            | {
+                _type: 'project';
+                slug: string | null;
+              }
+            | null;
+        } | null;
+        theme?: 'accent' | 'dark' | 'light';
+      }
+    | {
+        _key: string;
+        _type: 'heroBlock';
+        eyebrow?: string;
+        heading?: string;
+        tagline?: string;
+        subheading?: string;
+        image: {
+          _type: 'accessibleImage';
+          asset: {
+            _id: string;
+            url: string | null;
+            metadata: {
+              lqip: string | null;
+              dimensions: {
+                width: number | null;
+                height: number | null;
+                aspectRatio: number | null;
+              } | null;
+            } | null;
+          } | null;
+          media?: unknown;
+          hotspot?: SanityImageHotspot;
+          crop?: SanityImageCrop;
+          alt?: string;
+          caption?: string;
+        } | null;
+        showMascot?: boolean;
+        buttons: Array<{
+          _key: string;
+          label: string | null;
+          kind: 'external' | 'internal' | null;
+          path: string | null;
+          url: string | null;
+          style: 'primary' | 'secondary' | 'text' | null;
+          internal:
+            | {
+                _type: 'page';
+                slug: string | null;
+              }
+            | {
+                _type: 'post';
+                slug: string | null;
+              }
+            | {
+                _type: 'project';
+                slug: string | null;
+              }
+            | null;
+        }> | null;
+        layout?: 'centered' | 'split';
+        theme?: 'accent' | 'dark' | 'light';
+      }
+    | {
+        _key: string;
+        _type: 'imageBlock';
+        image: {
+          _type: 'accessibleImage';
+          asset: {
+            _id: string;
+            url: string | null;
+            metadata: {
+              lqip: string | null;
+              dimensions: {
+                width: number | null;
+                height: number | null;
+                aspectRatio: number | null;
+              } | null;
+            } | null;
+          } | null;
+          media?: unknown;
+          hotspot?: SanityImageHotspot;
+          crop?: SanityImageCrop;
+          alt?: string;
+          caption?: string;
+        } | null;
+        width?: 'content' | 'full' | 'wide';
+      }
+    | {
+        _key: string;
+        _type: 'richTextBlock';
+        content: Array<
+          | {
+              _key: string;
+              _type: 'accessibleImage';
+              asset: {
+                _id: string;
+                url: string | null;
+                metadata: {
+                  lqip: string | null;
+                  dimensions: {
+                    width: number | null;
+                    height: number | null;
+                    aspectRatio: number | null;
+                  } | null;
+                } | null;
+              } | null;
+              media?: unknown;
+              hotspot?: SanityImageHotspot;
+              crop?: SanityImageCrop;
+              alt?: string;
+              caption?: string;
+            }
+          | {
+              children?: Array<{
+                marks?: Array<string>;
+                text?: string;
+                _type: 'span';
+                _key: string;
+              }>;
+              style?: 'blockquote' | 'h2' | 'h3' | 'h4' | 'normal';
+              listItem?: 'bullet' | 'number';
+              markDefs?: Array<{
+                href?: string;
+                openInNewTab?: boolean;
+                _type: 'link';
+                _key: string;
+              }>;
+              level?: number;
+              _type: 'block';
+              _key: string;
+            }
+          | {
+              _key: string;
+              _type: 'code';
+              language?: string;
+              filename?: string;
+              code?: string;
+              highlightedLines?: Array<number>;
+            }
+        > | null;
+        width?: 'narrow' | 'wide';
+      }
+    | {
+        _key: string;
+        _type: 'skillsBlock';
+        heading?: string;
+        intro?: string;
+        groups?: Array<{
+          title?: string;
+          skills?: Array<string>;
+          _type: 'skillGroup';
+          _key: string;
+        }>;
+        theme?: 'accent' | 'dark' | 'light';
+      }
+    | {
+        _key: string;
+        _type: 'twoColumnBlock';
+        heading?: string;
+        layout?: 'aside' | 'even';
+        left: {
+          content: Array<
+            | {
+                _key: string;
+                _type: 'accessibleImage';
+                asset: {
+                  _id: string;
+                  url: string | null;
+                  metadata: {
+                    lqip: string | null;
+                    dimensions: {
+                      width: number | null;
+                      height: number | null;
+                      aspectRatio: number | null;
+                    } | null;
+                  } | null;
+                } | null;
+                media?: unknown;
+                hotspot?: SanityImageHotspot;
+                crop?: SanityImageCrop;
+                alt?: string;
+                caption?: string;
+              }
+            | {
+                children?: Array<{
+                  marks?: Array<string>;
+                  text?: string;
+                  _type: 'span';
+                  _key: string;
+                }>;
+                style?: 'blockquote' | 'h2' | 'h3' | 'h4' | 'normal';
+                listItem?: 'bullet' | 'number';
+                markDefs?: Array<{
+                  href?: string;
+                  openInNewTab?: boolean;
+                  _type: 'link';
+                  _key: string;
+                }>;
+                level?: number;
+                _type: 'block';
+                _key: string;
+              }
+            | {
+                _key: string;
+                _type: 'code';
+                language?: string;
+                filename?: string;
+                code?: string;
+                highlightedLines?: Array<number>;
+              }
+          > | null;
+          image: {
+            _type: 'accessibleImage';
+            asset: {
+              _id: string;
+              url: string | null;
+              metadata: {
+                lqip: string | null;
+                dimensions: {
+                  width: number | null;
+                  height: number | null;
+                  aspectRatio: number | null;
+                } | null;
+              } | null;
+            } | null;
+            media?: unknown;
+            hotspot?: SanityImageHotspot;
+            crop?: SanityImageCrop;
+            alt?: string;
+            caption?: string;
+          } | null;
+        } | null;
+        right: {
+          content: Array<
+            | {
+                _key: string;
+                _type: 'accessibleImage';
+                asset: {
+                  _id: string;
+                  url: string | null;
+                  metadata: {
+                    lqip: string | null;
+                    dimensions: {
+                      width: number | null;
+                      height: number | null;
+                      aspectRatio: number | null;
+                    } | null;
+                  } | null;
+                } | null;
+                media?: unknown;
+                hotspot?: SanityImageHotspot;
+                crop?: SanityImageCrop;
+                alt?: string;
+                caption?: string;
+              }
+            | {
+                children?: Array<{
+                  marks?: Array<string>;
+                  text?: string;
+                  _type: 'span';
+                  _key: string;
+                }>;
+                style?: 'blockquote' | 'h2' | 'h3' | 'h4' | 'normal';
+                listItem?: 'bullet' | 'number';
+                markDefs?: Array<{
+                  href?: string;
+                  openInNewTab?: boolean;
+                  _type: 'link';
+                  _key: string;
+                }>;
+                level?: number;
+                _type: 'block';
+                _key: string;
+              }
+            | {
+                _key: string;
+                _type: 'code';
+                language?: string;
+                filename?: string;
+                code?: string;
+                highlightedLines?: Array<number>;
+              }
+          > | null;
+          image: {
+            _type: 'accessibleImage';
+            asset: {
+              _id: string;
+              url: string | null;
+              metadata: {
+                lqip: string | null;
+                dimensions: {
+                  width: number | null;
+                  height: number | null;
+                  aspectRatio: number | null;
+                } | null;
+              } | null;
+            } | null;
+            media?: unknown;
+            hotspot?: SanityImageHotspot;
+            crop?: SanityImageCrop;
+            alt?: string;
+            caption?: string;
+          } | null;
+        } | null;
+        verticalAlign?: 'center' | 'top';
+        reverseOnMobile?: boolean;
+      }
+  > | null;
+} | null;
