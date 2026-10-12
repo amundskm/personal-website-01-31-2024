@@ -7,7 +7,7 @@ import {
   output,
   signal,
 } from '@angular/core';
-import { AuthService } from '../../core/auth/auth.service';
+import { EventFilesService } from '../../core/events/event-files.service';
 import {
   type Attachment,
   type AttachmentKind,
@@ -17,12 +17,7 @@ import {
   type GroupEvent,
   MAX_FILE_BYTES,
   MAX_FILES,
-  type UploadRequest,
-  validateUploadRequest,
 } from '../../core/events/events';
-
-/** Cover images are resized to at most this many pixels wide before upload. */
-const IMAGE_MAX_WIDTH = 1600;
 
 /**
  * An event's cover image and files. Everyone who can see the event can view
@@ -113,7 +108,7 @@ const IMAGE_MAX_WIDTH = 1600;
   styleUrl: './event-attachments.scss',
 })
 export class EventAttachments {
-  private readonly auth = inject(AuthService);
+  private readonly uploads = inject(EventFilesService);
 
   readonly detail = input.required<EventDetail>();
   readonly changed = output<GroupEvent>();
@@ -143,39 +138,13 @@ export class EventAttachments {
     this.busy.set(true);
     this.status.set({ text: `Uploading ${picked.name}…`, error: false });
     try {
-      const file = kind === 'image' ? await resizeImage(picked) : picked;
-      const request: UploadRequest = {
-        kind,
-        name: file.name,
-        size: file.size,
-        type: file.type || 'application/octet-stream',
-      };
-      const problem = validateUploadRequest(request, this.files().length);
+      const file = await this.uploads.prepare(picked, kind);
+      const problem = this.uploads.check(file, kind, this.files().length);
       if (problem) throw new Error(problem);
-
-      const base = `/events/${encodeURIComponent(this.event().id)}/attachments`;
-      const upload = await this.auth.fetchMembersApi<{
-        id: string;
-        name: string;
-        uploadUrl: string;
-      }>(base, {
-        method: 'POST',
-        body: request,
-      });
-      if (!upload) throw new Error('Could not start the upload.');
-      const put = await fetch(upload.uploadUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': request.type },
-        body: file,
-      });
-      if (!put.ok) throw new Error('The upload failed. Please try again.');
-      const updated = await this.auth.fetchMembersApi<GroupEvent>(`${base}/${upload.id}`, {
-        method: 'PUT',
-        body: { kind, name: upload.name, type: request.type },
-      });
+      const updated = await this.uploads.upload(this.event().id, kind, file);
       if (updated) this.changed.emit(updated);
       this.status.set({
-        text: kind === 'image' ? 'Cover image updated.' : `Attached ${upload.name}.`,
+        text: kind === 'image' ? 'Cover image updated.' : `Attached ${file.name}.`,
         error: false,
       });
     } catch (error) {
@@ -193,10 +162,7 @@ export class EventAttachments {
     this.busy.set(true);
     this.status.set(null);
     try {
-      const updated = await this.auth.fetchMembersApi<GroupEvent>(
-        `/events/${encodeURIComponent(this.event().id)}/attachments/${file.id}`,
-        { method: 'DELETE' },
-      );
+      const updated = await this.uploads.remove(this.event().id, file.id);
       if (updated) this.changed.emit(updated);
       this.status.set({ text: `Removed ${file.name}.`, error: false });
     } catch (error) {
@@ -208,27 +174,4 @@ export class EventAttachments {
       this.busy.set(false);
     }
   }
-}
-
-/** Shrinks a photo to a web-friendly JPEG (keeps small images as they are). */
-async function resizeImage(file: File): Promise<File> {
-  const bitmap = await createImageBitmap(file).catch(() => {
-    throw new Error("That image couldn't be opened. Try a JPEG or PNG.");
-  });
-  const scale = Math.min(1, IMAGE_MAX_WIDTH / bitmap.width);
-  if (scale === 1 && file.size < 1024 * 1024 && file.type === 'image/jpeg') {
-    bitmap.close();
-    return file;
-  }
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob(resolve, 'image/jpeg', 0.85),
-  );
-  if (!blob) throw new Error('That image could not be processed.');
-  const name = file.name.replace(/\.[^.]+$/, '') + '.jpg';
-  return new File([blob], name, { type: 'image/jpeg' });
 }

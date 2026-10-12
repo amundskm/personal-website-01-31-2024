@@ -12,11 +12,15 @@ import {
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import {
+  type AttachmentKind,
   canManage,
   DEFAULT_REMINDERS,
   type EventDate,
   type EventDetail,
   type EventsOverview,
+  formatBytes,
+  MAX_FILE_BYTES,
+  MAX_FILES,
   type EventInput,
   type GroupEvent,
   REMINDER_PRESETS,
@@ -25,6 +29,8 @@ import {
 import { SeoService } from '../../core/seo.service';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
 import { MemberAvatar } from '../../shared/member-avatar/member-avatar';
+import { EventAttachments } from './event-attachments';
+import { EventFilesService } from '../../core/events/event-files.service';
 import { localIsoDate } from './event-calendar';
 
 interface DateRow {
@@ -39,7 +45,7 @@ interface DateRow {
 /** Create an event (poll or fixed date), or edit one you organize. */
 @Component({
   selector: 'app-event-form-page',
-  imports: [RouterLink, MemberAvatar, LoadingComponent, LoadErrorComponent],
+  imports: [RouterLink, MemberAvatar, EventAttachments, LoadingComponent, LoadErrorComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="section">
@@ -100,6 +106,76 @@ interface DateRow {
                 />
               </label>
             </div>
+
+            <fieldset class="ev-fieldset">
+              <legend>Image &amp; files <small>(optional)</small></legend>
+              @if (id()) {
+                @if (existing.hasValue() && existing.value(); as detail) {
+                  @if (detail.event.image?.url) {
+                    <img
+                      class="ev-form-preview"
+                      [src]="detail.event.image!.url"
+                      alt="Current cover image"
+                    />
+                  }
+                  <app-event-attachments [detail]="detail" (changed)="updateExisting($event)" />
+                }
+              } @else {
+                @if (imagePreview(); as preview) {
+                  <img class="ev-form-preview" [src]="preview" alt="Cover image preview" />
+                }
+                <div class="button-row">
+                  <label class="btn btn--text">
+                    {{ coverImage() ? 'Change cover image' : 'Add a cover image' }}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      class="visually-hidden"
+                      (change)="pickImage($event)"
+                    />
+                  </label>
+                  @if (coverImage()) {
+                    <button type="button" class="btn btn--text" (click)="clearImage()">
+                      Remove image
+                    </button>
+                  }
+                  @if (files().length < maxFiles) {
+                    <label class="btn btn--text">
+                      Attach files
+                      <input
+                        type="file"
+                        multiple
+                        class="visually-hidden"
+                        (change)="pickFiles($event)"
+                      />
+                    </label>
+                  }
+                </div>
+                @if (files().length) {
+                  <ul class="ev-queued">
+                    @for (file of files(); track $index) {
+                      <li>
+                        {{ file.name }} <span class="ev-meta">{{ size(file.size) }}</span>
+                        <button
+                          type="button"
+                          class="ev-link"
+                          (click)="removeFile($index)"
+                          [attr.aria-label]="'Remove ' + file.name"
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    }
+                  </ul>
+                }
+                <p class="ev-meta">
+                  Up to {{ maxFiles }} files, {{ maxFileSize }} each. They upload when you save.
+                </p>
+                @if (fileError(); as e) {
+                  <p class="ev-error" role="alert">{{ e }}</p>
+                }
+              }
+            </fieldset>
 
             <fieldset class="ev-fieldset">
               <legend>When</legend>
@@ -320,7 +396,7 @@ interface DateRow {
             }
             <div class="button-row">
               <button type="submit" class="btn btn--primary" [disabled]="busy()">
-                {{ busy() ? 'Saving…' : submitLabel() }}
+                {{ busy() ? (uploadProgress() ?? 'Saving…') : submitLabel() }}
               </button>
             </div>
             <p class="ev-meta">
@@ -335,6 +411,7 @@ interface DateRow {
 })
 export class EventFormPage implements OnInit {
   private readonly auth = inject(AuthService);
+  private readonly uploads = inject(EventFilesService);
   private readonly router = inject(Router);
   private readonly seo = inject(SeoService);
 
@@ -406,6 +483,92 @@ export class EventFormPage implements OnInit {
   protected readonly dates = signal<DateRow[]>([newRow(), newRow()]);
   protected readonly reminders = signal<number[]>([...DEFAULT_REMINDERS]);
   protected readonly busy = signal(false);
+
+  /** New events: a cover image and files picked before saving, uploaded after. */
+  protected readonly coverImage = signal<File | null>(null);
+  protected readonly imagePreview = signal<string | null>(null);
+  protected readonly files = signal<File[]>([]);
+  protected readonly fileError = signal<string | null>(null);
+  protected readonly uploadProgress = signal<string | null>(null);
+  protected readonly maxFiles = MAX_FILES;
+  protected readonly maxFileSize = formatBytes(MAX_FILE_BYTES);
+  protected readonly size = formatBytes;
+
+  protected async pickImage(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const picked = input.files?.[0];
+    input.value = '';
+    if (!picked) return;
+    this.fileError.set(null);
+    try {
+      const image = await this.uploads.prepare(picked, 'image');
+      const problem = this.uploads.check(image, 'image', 0);
+      if (problem) throw new Error(problem);
+      this.coverImage.set(image);
+      this.setPreview(URL.createObjectURL(image));
+    } catch (error) {
+      this.fileError.set(error instanceof Error ? error.message : 'That image could not be used.');
+    }
+  }
+
+  protected clearImage(): void {
+    this.coverImage.set(null);
+    this.setPreview(null);
+  }
+
+  protected pickFiles(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const picked = [...(input.files ?? [])];
+    input.value = '';
+    this.fileError.set(null);
+    const accepted = [...this.files()];
+    for (const file of picked) {
+      const problem = this.uploads.check(file, 'file', accepted.length);
+      if (problem) {
+        this.fileError.set(`${file.name}: ${problem}`);
+        continue;
+      }
+      accepted.push(file);
+    }
+    this.files.set(accepted);
+  }
+
+  protected removeFile(index: number): void {
+    this.files.update((files) => files.filter((_, i) => i !== index));
+  }
+
+  /** Editing: an attachment change on the form updates the loaded event. */
+  protected updateExisting(event: GroupEvent): void {
+    const current = this.existing.hasValue() ? this.existing.value() : null;
+    if (current) this.existing.set({ ...current, event });
+  }
+
+  private setPreview(url: string | null): void {
+    const old = this.imagePreview();
+    if (old) URL.revokeObjectURL(old);
+    this.imagePreview.set(url);
+  }
+
+  /**
+   * Uploads what was picked for a new event. Returns the names that failed;
+   * the event itself is already saved either way.
+   */
+  private async uploadPicked(eventId: string): Promise<string[]> {
+    const queue: [AttachmentKind, File][] = [
+      ...(this.coverImage() ? [['image', this.coverImage()!] as [AttachmentKind, File]] : []),
+      ...this.files().map((f): [AttachmentKind, File] => ['file', f]),
+    ];
+    const failed: string[] = [];
+    for (const [index, [kind, file]] of queue.entries()) {
+      this.uploadProgress.set(`Uploading ${index + 1} of ${queue.length}…`);
+      try {
+        await this.uploads.upload(eventId, kind, file);
+      } catch {
+        failed.push(file.name);
+      }
+    }
+    return failed;
+  }
   protected readonly error = signal<string | null>(null);
   protected readonly presets = REMINDER_PRESETS;
 
@@ -524,11 +687,18 @@ export class EventFormPage implements OnInit {
         id ? `/events/${encodeURIComponent(id)}` : '/events',
         { method: id ? 'PUT' : 'POST', body: input },
       );
-      await this.router.navigate(['/events', saved?.id ?? id]);
+      const eventId = saved?.id ?? id!;
+      // New event: now that it exists, upload what was picked
+      const failedUploads = !id && eventId ? await this.uploadPicked(eventId) : [];
+      this.setPreview(null);
+      await this.router.navigate(['/events', eventId], {
+        state: failedUploads.length ? { failedUploads } : undefined,
+      });
     } catch (error) {
       this.error.set(error instanceof Error ? error.message : 'The event could not be saved.');
     } finally {
       this.busy.set(false);
+      this.uploadProgress.set(null);
     }
   }
 
