@@ -7,8 +7,6 @@ import { AttributeType, BillingMode, Table } from 'aws-cdk-lib/aws-dynamodb';
 import { Rule, Schedule } from 'aws-cdk-lib/aws-events';
 import { LambdaFunction } from 'aws-cdk-lib/aws-events-targets';
 import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
-import { HostedZone } from 'aws-cdk-lib/aws-route53';
-import { EmailIdentity, Identity } from 'aws-cdk-lib/aws-ses';
 import { auth } from './auth/resource';
 import { finances } from './functions/finances/resource';
 import { EVENTS_FROM_ADDRESS, groupEvents } from './functions/group-events/resource';
@@ -130,19 +128,8 @@ eventsLambda.addToRolePolicy(
     conditions: { StringEquals: { 'ses:FromAddress': EVENTS_FROM_ADDRESS } },
   }),
 );
-// Verify neiaboiz.com for sending (DKIM records go into its Route 53 zone).
-// Only on the hosted branch: an identity is per account and region, so
-// personal sandboxes would collide with it.
-if (process.env['AWS_BRANCH']) {
-  new EmailIdentity(eventsStack, 'NeiaBoizEmailDomain', {
-    identity: Identity.publicHostedZone(
-      HostedZone.fromHostedZoneAttributes(eventsStack, 'NeiaBoizZone', {
-        hostedZoneId: 'Z057981539I3P54Q5JA3G',
-        zoneName: 'neiaboiz.com',
-      }),
-    ),
-  });
-}
+// Emails are sent through the existing, already verified neiaboiz.com SES
+// identity (DKIM + MAIL FROM admin.neiaboiz.com), managed outside this app.
 // Reminders: check every 15 minutes (in the function's own stack, avoiding a cross-stack cycle)
 new Rule(Stack.of(eventsLambda), 'EventRemindersSchedule', {
   schedule: Schedule.rate(Duration.minutes(15)),

@@ -193,7 +193,7 @@ For a sandbox, use `npx ampx sandbox secret set SANITY_PRIVATE_WRITE_TOKEN`.
 - **Email design:** all emails, including the Cognito account invitation, use `web/amplify/shared/email-layout.ts`.
 
 **Email setup (once):**
-1. The first deploy creates the SES identity for `neiaboiz.com` and adds its DKIM records to the Route 53 zone. Verification finishes on its own within about an hour.
+1. Sending uses the existing `neiaboiz.com` SES identity in us-east-2. It's already verified with DKIM and a custom MAIL FROM domain (`admin.neiaboiz.com`) and isn't managed by this app.
 2. While SES is in its *sandbox*, emails only reach verified addresses. In the SES console (us-east-2), choose **Request production access**, describe it as transactional notifications to a small invite-only group, and submit. Approval usually takes about a day.
 3. Optional: once out of the sandbox, Cognito can send invitations from `@neiaboiz.com` instead of its default sender. Set `senders.email` in `web/amplify/auth/resource.ts`.
 
