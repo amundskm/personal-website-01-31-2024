@@ -30,7 +30,7 @@ let nextId = 0;
   selector: 'app-address-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="ev-field ev-address">
+    <div class="ev-address">
       <label [for]="ids.input">Address</label>
       <div class="ev-address-box">
         <input
@@ -94,6 +94,27 @@ let nextId = 0;
     </div>
   `,
   styles: `
+    @use 'mixins' as *;
+
+    // The form's styles stop at this component, so its field, input and notes are styled here
+    .ev-address {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+      font-weight: 500;
+    }
+
+    input {
+      @include form-control;
+      width: 100%;
+    }
+
+    .ev-meta {
+      margin: 0;
+      font-size: var(--text-sm);
+      color: var(--color-muted);
+    }
+
     .ev-address-box {
       position: relative;
     }

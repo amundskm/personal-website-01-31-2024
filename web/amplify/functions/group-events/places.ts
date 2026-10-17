@@ -36,9 +36,11 @@ export async function searchPlaces(
   const { ResultItems } = await places.send(
     new SuggestCommand({
       QueryText: text.slice(0, MAX_PLACE_QUERY),
+      // Query refinements ("bars near…") are filtered out; the API requires at least 1
       MaxResults: MAX_PLACE_SUGGESTIONS + 2,
-      MaxQueryRefinements: 0,
       BiasPosition: PLACES_BIAS_POSITION,
+      // Elsewhere can still be typed in by hand
+      Filter: { IncludeCountries: ['USA'] },
       Language: 'en',
     }),
   );
