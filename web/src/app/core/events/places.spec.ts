@@ -55,6 +55,23 @@ describe('places', () => {
     });
   });
 
+  it('handles a place whose title differs from the name in its address', () => {
+    // Shapes as Amazon Location returns them
+    const [row] = toSuggestions([
+      {
+        Title: 'Example Brewing Company (Example Brewing)',
+        SuggestResultItemType: 'Place',
+        Place: {
+          PlaceId: 'p3',
+          PlaceType: 'PointOfInterest',
+          Address: { Label: 'Example Brewing Company, 5 Elm St, Anytown, IA 50000, United States' },
+        },
+      },
+    ]);
+    expect(row.title).toBe('Example Brewing Company (Example Brewing)');
+    expect(row.subtitle).toBe('5 Elm St, Anytown, IA 50000, United States');
+  });
+
   it('gives a plain address no name, and no coordinates if they are missing', () => {
     expect(
       toPlaceDetails({ PlaceType: 'PointAddress', Address: { Label: '2 Oak Rd, Anytown' } }),

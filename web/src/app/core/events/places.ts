@@ -60,7 +60,7 @@ export function toSuggestions(items: LocationSuggestItem[] = []): PlaceSuggestio
     const isPlace = item.Place?.PlaceType === 'PointOfInterest';
     const label = item.Place?.Address?.Label || item.Title;
     const title = isPlace ? item.Title : label.split(',')[0];
-    rows.push({ id, title, subtitle: restOf(label, title), isPlace });
+    rows.push({ id, title, subtitle: afterFirstPart(label), isPlace });
     if (rows.length === MAX_PLACE_SUGGESTIONS) break;
   }
   return rows;
@@ -71,21 +71,21 @@ export function toPlaceDetails(place: LocationPlace): PlaceDetails | null {
   const address = place.Address?.Label?.trim() || place.Title?.trim();
   if (!address) return null;
   const [lon, lat] = place.Position ?? [];
+  const isPlace = place.PlaceType === 'PointOfInterest';
   return {
-    name: place.PlaceType === 'PointOfInterest' ? (place.Title?.trim() ?? null) : null,
+    name: isPlace ? (place.Title?.trim() ?? null) : null,
     // A named place's label starts with its name; the address is the rest
-    address:
-      place.PlaceType === 'PointOfInterest' && place.Title
-        ? restOf(address, place.Title) || address
-        : address,
+    address: (isPlace && afterFirstPart(address)) || address,
     coords: validCoords({ lat, lon }) ? { lat: round(lat), lon: round(lon) } : null,
   };
 }
 
-/** `label` without a leading `first` and its comma. */
-function restOf(label: string, first: string): string {
-  return label.startsWith(first) ? label.slice(first.length).replace(/^,\s*/, '') : label;
-}
+/**
+ * An address label after its first part: the street line of an address, or
+ * the name of a place (which can differ from the place's title, e.g. "7 Hills
+ * Brewing Company" vs "7 Hills Brewing Company (7 Hills Brewing)").
+ */
+const afterFirstPart = (label: string) => label.split(',').slice(1).join(',').trim();
 
 /** About 1 m: plenty for a map pin. */
 const round = (n: number) => Math.round(n * 1e5) / 1e5;
