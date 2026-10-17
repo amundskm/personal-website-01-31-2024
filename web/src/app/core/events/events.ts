@@ -7,6 +7,7 @@
  */
 
 import type { EventComment } from './comments';
+import { validCoords } from './places';
 import type { EmailPrefs } from './profile';
 
 export const DEFAULT_TIME_ZONE = 'America/Chicago';
@@ -72,6 +73,13 @@ export interface Reminder {
 export interface EventLocation {
   name: string;
   address?: string | null;
+  /** Where the address is on the map; set when it was picked from address search. */
+  coords?: EventCoords | null;
+}
+
+export interface EventCoords {
+  lat: number;
+  lon: number;
 }
 
 export interface GroupEvent {
@@ -439,7 +447,8 @@ export function validateEventInput(value: unknown): string | null {
       typeof input.location?.name !== 'string' ||
       input.location.name.length > 200 ||
       (input.location.address != null &&
-        (typeof input.location.address !== 'string' || input.location.address.length > 300)))
+        (typeof input.location.address !== 'string' || input.location.address.length > 300)) ||
+      (input.location.coords != null && !validCoords(input.location.coords)))
   )
     return 'Invalid location';
   if (!Array.isArray(input.options) || !input.options.length || input.options.length > 20)
@@ -588,6 +597,9 @@ function vevent(event: GroupEvent, url: string, now: Date): string[] {
       : [`DTSTART:${icsStamp(span.start)}`, `DTEND:${icsStamp(span.end)}`]),
     `SUMMARY:${escapeIcs(event.title)}`,
     ...(location ? [`LOCATION:${escapeIcs(location)}`] : []),
+    ...(event.location?.coords
+      ? [`GEO:${event.location.coords.lat};${event.location.coords.lon}`]
+      : []),
     `DESCRIPTION:${escapeIcs([event.details, url].filter(Boolean).join('\n\n'))}`,
     `URL:${url}`,
     `STATUS:${event.status === 'cancelled' ? 'CANCELLED' : 'CONFIRMED'}`,

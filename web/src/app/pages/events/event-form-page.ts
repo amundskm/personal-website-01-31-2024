@@ -16,6 +16,7 @@ import {
   canInviteGroup,
   canManage,
   DEFAULT_REMINDERS,
+  type EventCoords,
   type EventDate,
   type EventDetail,
   type EventsOverview,
@@ -35,6 +36,8 @@ import { MemberAvatar } from '../../shared/member-avatar/member-avatar';
 import { EventAttachments } from './event-attachments';
 import { EventFilesService } from '../../core/events/event-files.service';
 import { localIsoDate } from './event-calendar';
+import { AddressPicker } from './address-picker';
+import type { PlaceDetails } from '../../core/events/places';
 
 interface DateRow {
   key: number;
@@ -48,7 +51,14 @@ interface DateRow {
 /** Create an event (poll or fixed date), or edit one you organize. */
 @Component({
   selector: 'app-event-form-page',
-  imports: [RouterLink, MemberAvatar, EventAttachments, LoadingComponent, LoadErrorComponent],
+  imports: [
+    RouterLink,
+    MemberAvatar,
+    EventAttachments,
+    AddressPicker,
+    LoadingComponent,
+    LoadErrorComponent,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="section">
@@ -99,15 +109,11 @@ interface DateRow {
                   placeholder="e.g. Mike's cabin"
                 />
               </label>
-              <label class="ev-field">
-                <span>Address</span>
-                <input
-                  [value]="address()"
-                  (input)="address.set($any($event.target).value)"
-                  maxlength="300"
-                  autocomplete="street-address"
-                />
-              </label>
+              <app-address-picker
+                [(address)]="address"
+                [(coords)]="coords"
+                (picked)="placePicked($event)"
+              />
             </div>
 
             <fieldset class="ev-fieldset">
@@ -489,9 +495,7 @@ export class EventFormPage implements OnInit {
   /** The invite groups I can pick: only ones I'm in (admins: all). */
   protected readonly inviteGroups = computed(() => {
     const me = this.people()?.me;
-    return me
-      ? INVITE_GROUPS.filter((g) => canInviteGroup(me.groups ?? [], me.isAdmin, g.id))
-      : [];
+    return me ? INVITE_GROUPS.filter((g) => canInviteGroup(me.groups ?? [], me.isAdmin, g.id)) : [];
   });
 
   /** The invitable members in `group`. */
@@ -523,6 +527,8 @@ export class EventFormPage implements OnInit {
   protected readonly details = signal('');
   protected readonly placeName = signal('');
   protected readonly address = signal('');
+  /** Set when the address was picked from address search. */
+  protected readonly coords = signal<EventCoords | null>(null);
   protected readonly mode = signal<'poll' | 'fixed'>('poll');
   protected readonly dates = signal<DateRow[]>([newRow(), newRow()]);
   protected readonly reminders = signal<number[]>([...DEFAULT_REMINDERS]);
@@ -681,17 +687,29 @@ export class EventFormPage implements OnInit {
     return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
   }
 
+  /** Picking a named place (a bar, a park) fills in "Place" if it's empty. */
+  protected placePicked(place: PlaceDetails): void {
+    if (place.name && !this.placeName().trim()) this.placeName.set(place.name.slice(0, 200));
+  }
+
   protected toggleReminder(minutes: number, on: boolean): void {
     this.reminders.update((list) => (on ? [...list, minutes] : list.filter((m) => m !== minutes)));
   }
 
   protected async submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
+    const address = this.address().trim();
+    // With only an address, its street line names the place (it used to be dropped)
+    const placeName = this.placeName().trim() || address.split(',')[0].trim();
     const input: EventInput = {
       title: this.title().trim(),
       details: this.details().trim(),
-      location: this.placeName().trim()
-        ? { name: this.placeName().trim(), address: this.address().trim() || null }
+      location: placeName
+        ? {
+            name: placeName.slice(0, 200),
+            address: address || null,
+            coords: address ? this.coords() : null,
+          }
         : null,
       options: this.dates()
         .filter((r) => r.date)
@@ -757,6 +775,7 @@ export class EventFormPage implements OnInit {
     this.details.set(event.details);
     this.placeName.set(event.location?.name ?? '');
     this.address.set(event.location?.address ?? '');
+    this.coords.set(event.location?.coords ?? null);
     this.reminders.set(event.reminders.map((r) => r.offsetMinutes));
     const dates =
       event.status === 'confirmed' && event.confirmed ? [event.confirmed] : event.options;

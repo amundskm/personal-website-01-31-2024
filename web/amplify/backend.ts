@@ -162,6 +162,13 @@ eventsLambda.addToRolePolicy(
     conditions: { StringEquals: { 'ses:FromAddress': EVENTS_FROM_ADDRESS } },
   }),
 );
+// Address search on the event form (Amazon Location Service Places v2: no resource to create)
+eventsLambda.addToRolePolicy(
+  new PolicyStatement({
+    actions: ['geo-places:Suggest', 'geo-places:GetPlace'],
+    resources: [`arn:aws:geo-places:${Stack.of(eventsLambda).region}::provider/default`],
+  }),
+);
 // Emails are sent through the existing, already verified neiaboiz.com SES
 // identity (DKIM + MAIL FROM admin.neiaboiz.com), managed outside this app.
 // Reminders: check every 15 minutes (in the function's own stack, avoiding a cross-stack cycle)

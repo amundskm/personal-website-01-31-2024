@@ -103,6 +103,7 @@ import {
   votingOpen,
 } from '../../../src/app/core/events/events';
 import { callerGroups, json } from '../shared/http';
+import { searchPlaces } from './places';
 
 const TABLE = process.env['EVENTS_TABLE']!;
 const AVATAR_BUCKET = process.env['AVATAR_BUCKET']!;
@@ -161,6 +162,7 @@ interface MemberRecord extends Member {
  *   GET  /events/profile        → my profile (name, email, photo, email preferences)
  *   PUT  /events/profile        → { name?, prefs? }
  *   PUT  /events/profile/avatar → { image: JPEG data URL }; DELETE removes it
+ *   GET  /events/places?q=…     → address suggestions as you type; ?id=… → the picked one
  *   POST /unsubscribe           → { m, t } signed link from an email; no login needed
  *   GET  /calendar/{member}/{token}.ics → that member's calendar subscription; no login needed
  *
@@ -198,6 +200,8 @@ async function route(event: ApiEvent, caller: Caller): Promise<Result> {
   if (!id) {
     if (method === 'GET') return json(200, await overview(caller));
     if (method === 'POST') return create(caller, body);
+  } else if (id === 'places') {
+    if (!action && method === 'GET') return searchPlaces(event.queryStringParameters);
   } else if (id === 'profile') {
     if (!action && method === 'GET') return json(200, await profile(caller));
     if (!action && method === 'PUT') return updateProfile(caller, body);
@@ -1597,7 +1601,13 @@ function cleanLocation(location: EventInput['location']): GroupEvent['location']
   const name = location?.name?.trim();
   if (!name) return null;
   const address = location?.address?.trim();
-  return { name, ...(address ? { address } : {}) };
+  // Map coordinates only mean something with the address they were picked for
+  const coords = address && location?.coords;
+  return {
+    name,
+    ...(address ? { address } : {}),
+    ...(coords ? { coords: { lat: coords.lat, lon: coords.lon } } : {}),
+  };
 }
 
 /** The new reminder offsets, keeping the sent state of ones that already existed. */
