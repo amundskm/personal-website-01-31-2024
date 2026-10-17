@@ -35,5 +35,5 @@ export const auth = defineAuth({
   },
   // Must match ROLES in src/app/core/auth/roles.ts. (Not imported from there:
   // the deployer loads src/ as CommonJS, so its named exports can't be read.)
-  groups: ['admin', 'wife', 'neia-boiz'],
+  groups: ['admin', 'wife', 'neia-boiz', 'da-boiz', 'da-girls'],
 });

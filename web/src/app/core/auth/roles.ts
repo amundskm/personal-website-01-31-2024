@@ -6,7 +6,7 @@
  * `amplify/auth/resource.ts`, to `AUDIENCES` in
  * `studio/schemaTypes/documents/memberPage.ts`, and redeploy the backend.
  */
-export const ROLES = ['admin', 'wife', 'neia-boiz'] as const;
+export const ROLES = ['admin', 'wife', 'neia-boiz', 'da-boiz', 'da-girls'] as const;
 
 export type Role = (typeof ROLES)[number];
 
@@ -14,6 +14,8 @@ export const ROLE_LABELS: Record<Role, string> = {
   admin: 'Admin',
   wife: 'Wife',
   'neia-boiz': 'NEIA Boiz',
+  'da-boiz': 'Da Boiz',
+  'da-girls': 'Da Girls',
 };
 
 export const isRole = (value: string): value is Role =>

@@ -25,10 +25,26 @@ const url = 'https://neiaboiz.com/events/evt1';
 
 describe('Discord posts', () => {
   it('posts new polls and set-date events for everyone, never ones for specific people', () => {
-    expect(postsToDiscord(poll)).toBe(true);
-    expect(postsToDiscord({ ...poll, status: 'confirmed' })).toBe(true);
-    expect(postsToDiscord({ ...poll, invitees: ['bob'] })).toBe(false);
-    expect(postsToDiscord({ ...poll, status: 'cancelled' })).toBe(false);
+    expect(postsToDiscord(poll, [])).toBe(true);
+    expect(postsToDiscord({ ...poll, status: 'confirmed' }, [])).toBe(true);
+    expect(postsToDiscord({ ...poll, invitees: ['bob'] }, [])).toBe(false);
+    expect(postsToDiscord({ ...poll, status: 'cancelled' }, [])).toBe(false);
+  });
+
+  it('posts events for exactly Da Boiz, but not Da Girls or a changed list', () => {
+    const members = [
+      { id: 'me', groups: ['da-boiz'] },
+      { id: 'bob', groups: ['da-boiz'] },
+      { id: 'jim', groups: ['da-boiz'] },
+      { id: 'sue', groups: ['da-girls'] },
+    ];
+    expect(postsToDiscord({ ...poll, invitees: ['bob', 'jim'] }, members)).toBe(true);
+    expect(postsToDiscord({ ...poll, invitees: ['me', 'bob', 'jim'] }, members)).toBe(true);
+    expect(postsToDiscord({ ...poll, invitees: ['sue'] }, members)).toBe(false);
+    expect(postsToDiscord({ ...poll, invitees: ['bob'] }, members)).toBe(false);
+    expect(postsToDiscord({ ...poll, invitees: ['bob', 'jim', 'sue'] }, members)).toBe(false);
+    // No member list (e.g. Cognito failed): only everyone-events post
+    expect(postsToDiscord({ ...poll, invitees: ['bob', 'jim'] }, [])).toBe(false);
   });
 
   it('shows a poll\u2019s title, dates, deadline and link, but not its location or details', () => {

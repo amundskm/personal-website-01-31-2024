@@ -23,6 +23,7 @@ import {
   MAX_FILES,
   type EventInput,
   type GroupEvent,
+  INVITE_GROUPS,
   REMINDER_PRESETS,
   validateEventInput,
 } from '../../core/events/events';
@@ -312,11 +313,22 @@ interface DateRow {
                   />
                   Everyone in NEIA Boiz
                 </label>
+                @for (group of inviteGroups; track group.id) {
+                  <label>
+                    <input
+                      type="radio"
+                      name="invite"
+                      [checked]="matchedGroup() === group.id"
+                      (change)="selectGroup(group.id)"
+                    />
+                    {{ group.label }}
+                  </label>
+                }
                 <label>
                   <input
                     type="radio"
                     name="invite"
-                    [checked]="inviteMode() === 'selected'"
+                    [checked]="inviteMode() === 'selected' && !matchedGroup()"
                     (change)="inviteMode.set('selected')"
                   />
                   Specific people
@@ -470,6 +482,35 @@ export class EventFormPage implements OnInit {
       else next.delete(id);
       return next;
     });
+  }
+
+  protected readonly inviteGroups = INVITE_GROUPS;
+
+  /** The invitable members in `group`. */
+  private groupMembers(group: string): string[] {
+    return this.invitable()
+      .filter((m) => m.groups?.includes(group))
+      .map((m) => m.id);
+  }
+
+  /** The invite group the selection is exactly, if any (then its option shows as picked). */
+  protected readonly matchedGroup = computed(() => {
+    if (this.inviteMode() !== 'selected') return null;
+    const selected = this.selected();
+    return (
+      this.inviteGroups.find(({ id }) => {
+        const ids = this.groupMembers(id);
+        return (
+          ids.length > 0 && ids.length === selected.size && ids.every((m) => selected.has(m))
+        );
+      })?.id ?? null
+    );
+  });
+
+  /** Invites everyone in `group`; people can still be added or removed below. */
+  protected selectGroup(group: string): void {
+    this.inviteMode.set('selected');
+    this.selected.set(new Set(this.groupMembers(group)));
   }
 
   protected selectAll(on: boolean): void {

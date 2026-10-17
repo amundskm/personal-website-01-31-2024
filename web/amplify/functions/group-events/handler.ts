@@ -82,6 +82,7 @@ import {
   type EventInput,
   type EventOption,
   type GroupEvent,
+  INVITE_GROUPS,
   invitedMembers,
   isInvited,
   type Member,
@@ -309,7 +310,7 @@ async function create(caller: Caller, body: Record<string, unknown>): Promise<Re
     new PutCommand({ TableName: TABLE, Item: { pk: eventKey(event.id), type: 'event', ...event } }),
   );
   await notify(confirmed ? 'confirmed' : 'poll', event, caller);
-  if (postsToDiscord(event)) await postToDiscord(event, caller);
+  await postToDiscord(event, caller);
   return json(201, event);
 }
 
@@ -1291,11 +1292,13 @@ async function notify(
 }
 
 /**
- * Posts a new poll or event for everyone to the Discord channel. Never throws:
+ * Posts a new poll or event for everyone (or Da Boiz) to the Discord channel. Never throws:
  * a deleted channel or webhook, rate limiting or an outage is only logged.
  */
 async function postToDiscord(event: GroupEvent, caller: Caller): Promise<void> {
   const members = await loadMembers().catch(() => []);
+  // Without the member list a group event can't be checked, so it isn't posted
+  if (!postsToDiscord(event, members)) return;
   const by = members.find((m) => m.id === caller.id)?.name ?? 'Someone';
   await sendToDiscord(
     env.DISCORD_WEBHOOK_URL,
@@ -1426,10 +1429,19 @@ async function loadMembers(fresh = false): Promise<MemberRecord[]> {
   // Brief cache for page loads; emails pass fresh = true so preferences are current
   if (!fresh && membersCache && Date.now() - membersCache.at < 60_000) return membersCache.members;
 
-  const [users, items] = await Promise.all([
+  const [users, subgroups, items] = await Promise.all([
     Promise.all(MEMBER_GROUPS.map(listGroup)).then((lists) => lists.flat()),
+    Promise.all(INVITE_GROUPS.map((g) => listGroup(g.id))),
     scanAll(),
   ]);
+  // Member id → the invite groups they're in
+  const groupsOf = new Map<string, string[]>();
+  INVITE_GROUPS.forEach((group, i) => {
+    for (const user of subgroups[i]) {
+      const id = user.Attributes?.find((a) => a.Name === 'sub')?.Value;
+      if (id) groupsOf.set(id, [...(groupsOf.get(id) ?? []), group.id]);
+    }
+  });
   const profiles = new Map(
     items
       .filter((item) => item['type'] === 'profile')
@@ -1450,6 +1462,7 @@ async function loadMembers(fresh = false): Promise<MemberRecord[]> {
       hasName: !!name,
       prefs: normalizePrefs(profile?.['prefs']),
       avatarKey: typeof profile?.['avatarKey'] === 'string' ? profile['avatarKey'] : null,
+      groups: groupsOf.get(id) ?? [],
     });
   }
   const members = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -1470,12 +1483,13 @@ async function listGroup(group: string): Promise<UserType[]> {
   return users;
 }
 
-/** Names and photos only: members never see each other's email addresses. */
+/** Names, photos and groups only: members never see each other's email addresses. */
 const publicMembers = (members: MemberRecord[]): Promise<Member[]> =>
   Promise.all(
-    members.map(async ({ id, name, avatarKey }) => ({
+    members.map(async ({ id, name, avatarKey, groups }) => ({
       id,
       name,
+      groups,
       avatarUrl: await avatarUrl(avatarKey),
     })),
   );

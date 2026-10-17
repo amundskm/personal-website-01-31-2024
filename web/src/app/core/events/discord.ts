@@ -3,6 +3,7 @@ import {
   formatEventDate,
   type GroupEvent,
   isForEveryone,
+  type Member,
   shortDateLabel,
 } from './events';
 
@@ -24,12 +25,26 @@ export interface DiscordMessage {
   allowed_mentions: { parse: [] };
 }
 
+/** The one invite group whose events also go to the Discord channel. */
+export const DISCORD_GROUP = 'da-boiz';
+
 /**
- * New polls and new set-date events for everyone in NEIA Boiz are posted;
- * events for specific people (visible or hidden) never are.
+ * New polls and new set-date events for everyone in NEIA Boiz, or for exactly
+ * Da Boiz, are posted; events for anyone else (visible or hidden) never are.
  */
-export const postsToDiscord = (event: Pick<GroupEvent, 'status' | 'invitees'>) =>
-  (event.status === 'polling' || event.status === 'confirmed') && isForEveryone(event);
+export function postsToDiscord(
+  event: Pick<GroupEvent, 'status' | 'invitees' | 'createdBy'>,
+  members: Pick<Member, 'id' | 'groups'>[],
+): boolean {
+  if (event.status !== 'polling' && event.status !== 'confirmed') return false;
+  if (isForEveryone(event)) return true;
+  // Everyone in the group is invited and nobody else (the organizer always is)
+  const group = members
+    .filter((m) => m.groups?.includes(DISCORD_GROUP) && m.id !== event.createdBy)
+    .map((m) => m.id);
+  const invited = new Set(event.invitees!.filter((id) => id !== event.createdBy));
+  return group.length > 0 && group.length === invited.size && group.every((id) => invited.has(id));
+}
 
 /** Whether a URL is a Discord webhook (so a bad secret can't send data elsewhere). */
 export const isDiscordWebhook = (url: string) =>

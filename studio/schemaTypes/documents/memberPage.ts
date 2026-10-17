@@ -9,6 +9,8 @@ import {blockTypes} from '../blocks'
 const AUDIENCES = [
   {title: 'Wife', value: 'wife'},
   {title: 'NEIA Boiz', value: 'neia-boiz'},
+  {title: 'Da Boiz', value: 'da-boiz'},
+  {title: 'Da Girls', value: 'da-girls'},
 ]
 
 /** Blocks that list public posts/projects make no sense in the private dataset. */
