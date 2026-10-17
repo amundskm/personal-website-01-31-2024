@@ -3,6 +3,7 @@ import {
   formatEventDate,
   type GroupEvent,
   isForEveryone,
+  matchingGroup,
   type Member,
   shortDateLabel,
 } from './events';
@@ -37,13 +38,10 @@ export function postsToDiscord(
   members: Pick<Member, 'id' | 'groups'>[],
 ): boolean {
   if (event.status !== 'polling' && event.status !== 'confirmed') return false;
-  if (isForEveryone(event)) return true;
-  // Everyone in the group is invited and nobody else (the organizer always is)
-  const group = members
-    .filter((m) => m.groups?.includes(DISCORD_GROUP) && m.id !== event.createdBy)
-    .map((m) => m.id);
-  const invited = new Set(event.invitees!.filter((id) => id !== event.createdBy));
-  return group.length > 0 && group.length === invited.size && group.every((id) => invited.has(id));
+  return (
+    isForEveryone(event) ||
+    matchingGroup(event.invitees, event.createdBy, members) === DISCORD_GROUP
+  );
 }
 
 /** Whether a URL is a Discord webhook (so a bad secret can't send data elsewhere). */

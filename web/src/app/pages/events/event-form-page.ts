@@ -13,6 +13,7 @@ import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import {
   type AttachmentKind,
+  canInviteGroup,
   canManage,
   DEFAULT_REMINDERS,
   type EventDate,
@@ -24,6 +25,7 @@ import {
   type EventInput,
   type GroupEvent,
   INVITE_GROUPS,
+  matchingGroup,
   REMINDER_PRESETS,
   validateEventInput,
 } from '../../core/events/events';
@@ -313,7 +315,7 @@ interface DateRow {
                   />
                   Everyone in NEIA Boiz
                 </label>
-                @for (group of inviteGroups; track group.id) {
+                @for (group of inviteGroups(); track group.id) {
                   <label>
                     <input
                       type="radio"
@@ -484,7 +486,13 @@ export class EventFormPage implements OnInit {
     });
   }
 
-  protected readonly inviteGroups = INVITE_GROUPS;
+  /** The invite groups I can pick: only ones I'm in (admins: all). */
+  protected readonly inviteGroups = computed(() => {
+    const me = this.people()?.me;
+    return me
+      ? INVITE_GROUPS.filter((g) => canInviteGroup(me.groups ?? [], me.isAdmin, g.id))
+      : [];
+  });
 
   /** The invitable members in `group`. */
   private groupMembers(group: string): string[] {
@@ -493,18 +501,12 @@ export class EventFormPage implements OnInit {
       .map((m) => m.id);
   }
 
-  /** The invite group the selection is exactly, if any (then its option shows as picked). */
+  /** The pickable group the selection is exactly, if any (then its option shows as picked). */
   protected readonly matchedGroup = computed(() => {
-    if (this.inviteMode() !== 'selected') return null;
-    const selected = this.selected();
-    return (
-      this.inviteGroups.find(({ id }) => {
-        const ids = this.groupMembers(id);
-        return (
-          ids.length > 0 && ids.length === selected.size && ids.every((m) => selected.has(m))
-        );
-      })?.id ?? null
-    );
+    const organizer = this.organizerId();
+    if (this.inviteMode() !== 'selected' || !organizer) return null;
+    const group = matchingGroup([...this.selected()], organizer, this.people()?.members ?? []);
+    return this.inviteGroups().some((g) => g.id === group) ? group : null;
   });
 
   /** Invites everyone in `group`; people can still be added or removed below. */

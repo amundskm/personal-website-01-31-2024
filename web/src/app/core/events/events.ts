@@ -133,6 +133,30 @@ export const INVITE_GROUPS = [
   { id: 'da-girls', label: 'Da Girls' },
 ] as const;
 
+/** Only a group's own members (and admins) may invite that group. */
+export const canInviteGroup = (myGroups: readonly string[], isAdmin: boolean, group: string) =>
+  isAdmin || myGroups.includes(group);
+
+/**
+ * The invite group an invite list is exactly (everyone in it and nobody else,
+ * ignoring the organizer, who is always invited), or null.
+ */
+export function matchingGroup(
+  invitees: readonly string[] | null | undefined,
+  organizerId: string,
+  members: Pick<Member, 'id' | 'groups'>[],
+): string | null {
+  if (!invitees) return null;
+  const invited = new Set(invitees.filter((id) => id !== organizerId));
+  const group = INVITE_GROUPS.find(({ id }) => {
+    const ids = members
+      .filter((m) => m.groups?.includes(id) && m.id !== organizerId)
+      .map((m) => m.id);
+    return ids.length > 0 && ids.length === invited.size && ids.every((m) => invited.has(m));
+  });
+  return group?.id ?? null;
+}
+
 /** The signed-in member, as the API describes them. */
 export interface MeInfo extends Member {
   hasName: boolean;

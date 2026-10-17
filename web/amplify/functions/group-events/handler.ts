@@ -82,8 +82,10 @@ import {
   type EventInput,
   type EventOption,
   type GroupEvent,
+  canInviteGroup,
   INVITE_GROUPS,
   invitedMembers,
+  matchingGroup,
   isInvited,
   type Member,
   type Reminder,
@@ -123,6 +125,8 @@ type Result = APIGatewayProxyStructuredResultV2;
 interface Caller {
   id: string;
   isAdmin: boolean;
+  /** Cognito groups, from the access token. */
+  groups: string[];
 }
 
 interface MemberRecord extends Member {
@@ -174,6 +178,7 @@ export const handler = async (event: ApiEvent | ScheduledEvent): Promise<Result 
   const caller: Caller = {
     id: String(event.requestContext.authorizer.jwt.claims['sub']),
     isAdmin: groups.includes('admin'),
+    groups,
   };
 
   try {
@@ -282,6 +287,8 @@ async function create(caller: Caller, body: Record<string, unknown>): Promise<Re
   if (invitees && !invitees.length) {
     return json(400, { message: 'Pick at least one person to invite, or invite everyone.' });
   }
+  const groupError = await groupInviteError(caller, invitees, caller.id);
+  if (groupError) return json(403, { message: groupError });
   const voteBy = confirmed ? null : cleanVoteBy(input.voteBy);
   if (voteBy && deadlinePassed(voteBy, DEFAULT_TIME_ZONE, now)) {
     return json(400, { message: 'Pick a voting deadline in the future.' });
@@ -340,6 +347,14 @@ async function edit(caller: Caller, id: string, body: Record<string, unknown>): 
   if (invitees && !invitees.length) {
     return json(400, { message: 'Pick at least one person to invite, or invite everyone.' });
   }
+  // Only a changed list is checked, so other edits to an existing group event still save
+  const sameInvitees =
+    JSON.stringify([...(invitees ?? [])].sort()) ===
+      JSON.stringify([...(existing.invitees ?? [])].sort()) && !invitees === !existing.invitees;
+  const groupError = sameInvitees
+    ? null
+    : await groupInviteError(caller, invitees, existing.createdBy);
+  if (groupError) return json(403, { message: groupError });
   // A deadline only matters while polling; changing it reopens voting
   const stillPolling = existing.status === 'polling' && !input.confirmNow;
   const voteBy = stillPolling ? cleanVoteBy(input.voteBy) : null;
@@ -1470,6 +1485,19 @@ async function loadMembers(fresh = false): Promise<MemberRecord[]> {
   return members;
 }
 
+/** Why the caller can't send this invite list: it's exactly a group they aren't in. */
+async function groupInviteError(
+  caller: Caller,
+  invitees: string[] | null,
+  organizerId: string,
+): Promise<string | null> {
+  if (!invitees) return null;
+  const group = matchingGroup(invitees, organizerId, await loadMembers());
+  if (!group || canInviteGroup(caller.groups, caller.isAdmin, group)) return null;
+  const label = INVITE_GROUPS.find((g) => g.id === group)!.label;
+  return `Only people in ${label} can invite ${label}.`;
+}
+
 async function listGroup(group: string): Promise<UserType[]> {
   const users: UserType[] = [];
   let NextToken: string | undefined;
@@ -1501,6 +1529,8 @@ async function me(caller: Caller, members: MemberRecord[]) {
     name: record?.name ?? 'You',
     hasName: record?.hasName ?? false,
     isAdmin: caller.isAdmin,
+    // From the token, so the form offers the groups create/update will accept
+    groups: caller.groups.filter((g) => INVITE_GROUPS.some((ig) => ig.id === g)),
     email: record?.email ?? '',
     prefs: record?.prefs ?? normalizePrefs(null),
     avatarUrl: await avatarUrl(record?.avatarKey ?? null),
