@@ -12,12 +12,14 @@ import {
   lastDay,
   shortDateLabel,
   bestOptionIds,
+  canInviteGroup,
   canJoin,
   canLeave,
   canManage,
   canSee,
   invitedMembers,
   isInvited,
+  matchingGroup,
   dueReminders,
   eventIcs,
   formatEventDate,
@@ -469,5 +471,29 @@ describe('joining and leaving', () => {
     expect(canLeave(listed, 'alice')).toBe(false);
     expect(canLeave(listed, 'carol')).toBe(false);
     expect(canLeave({ ...listed, invitees: null }, 'bob')).toBe(false);
+  });
+});
+
+describe('invite groups', () => {
+  const members = [
+    { id: 'me', groups: ['da-boiz'] },
+    { id: 'bob', groups: ['da-boiz'] },
+    { id: 'sue', groups: ['da-girls'] },
+    { id: 'ann', groups: ['da-girls'] },
+  ];
+
+  it('finds the group an invite list is exactly, ignoring the organizer', () => {
+    expect(matchingGroup(['bob'], 'me', members)).toBe('da-boiz');
+    expect(matchingGroup(['me', 'bob'], 'me', members)).toBe('da-boiz');
+    expect(matchingGroup(['sue', 'ann'], 'me', members)).toBe('da-girls');
+    expect(matchingGroup(['sue'], 'me', members)).toBeNull();
+    expect(matchingGroup(['bob', 'sue'], 'me', members)).toBeNull();
+    expect(matchingGroup(null, 'me', members)).toBeNull();
+  });
+
+  it('lets only a group’s members (and admins) invite it', () => {
+    expect(canInviteGroup(['neia-boiz', 'da-boiz'], false, 'da-boiz')).toBe(true);
+    expect(canInviteGroup(['neia-boiz', 'da-boiz'], false, 'da-girls')).toBe(false);
+    expect(canInviteGroup(['admin'], true, 'da-girls')).toBe(true);
   });
 });
