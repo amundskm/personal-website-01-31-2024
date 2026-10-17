@@ -120,7 +120,18 @@ export interface Member {
   name: string;
   /** Signed, short-lived link to their photo. */
   avatarUrl?: string | null;
+  /** The INVITE_GROUPS they're in. */
+  groups?: string[];
 }
+
+/**
+ * Subgroups the event form can invite in one click. Each is a Cognito group
+ * (see ROLES); people in them must also be in `neia-boiz` to use events.
+ */
+export const INVITE_GROUPS = [
+  { id: 'da-boiz', label: 'Da Boiz' },
+  { id: 'da-girls', label: 'Da Girls' },
+] as const;
 
 /** The signed-in member, as the API describes them. */
 export interface MeInfo extends Member {
