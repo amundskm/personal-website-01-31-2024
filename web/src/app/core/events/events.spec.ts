@@ -188,6 +188,14 @@ describe('validateEventInput', () => {
     );
     expect(validateEventInput({ ...valid, invitees: ['bob'], inviteesOnly: true })).toBeNull();
   });
+
+  it('checks map coordinates on the location', () => {
+    const at = (coords: unknown) =>
+      validateEventInput({ ...valid, location: { name: 'The cabin', address: '1 Rd', coords } });
+    expect(at({ lat: 42.5, lon: -92.4 })).toBeNull();
+    expect(at(null)).toBeNull();
+    expect(at({ lat: 200, lon: 0 })).toMatch(/location/);
+  });
 });
 
 describe('formatEventDate', () => {
@@ -211,11 +219,21 @@ describe('eventIcs', () => {
     expect(unfolded).toContain(
       'DESCRIPTION:Bring a chair\\, $20 for food\\n\\nhttps://example.com/events/evt1',
     );
+    expect(unfolded).not.toContain('GEO:');
     expect(unfolded.match(/BEGIN:VALARM/g)).toHaveLength(2);
     expect(unfolded).toContain('TRIGGER:-PT10080M');
     expect(ics.split('\r\n').every((line) => new TextEncoder().encode(line).length <= 75)).toBe(
       true,
     );
+  });
+
+  it('pins a picked address on the map', () => {
+    const location = {
+      name: 'The cabin',
+      address: '1 Example Rd',
+      coords: { lat: 42.5, lon: -92.4 },
+    };
+    expect(eventIcs(event({ location }), 'https://example.com', now)).toContain('GEO:42.5;-92.4');
   });
 
   it('uses whole days for all-day events', () => {
