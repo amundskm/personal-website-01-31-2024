@@ -7,23 +7,28 @@ import {
   input,
   signal,
   viewChild,
-} from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { NavigationEnd, Router, RouterLink, RouterLinkActive } from '@angular/router';
-import { filter } from 'rxjs';
-import { AuthService } from '../../core/auth/auth.service';
-import { MyProfileService } from '../../core/events/my-profile.service';
-import { MemberAvatar } from '../../shared/member-avatar/member-avatar';
-import type { SanityLink, SiteSettings } from '../../core/models';
-import { resolveLink } from '../../core/paths';
-import { WizardHat } from '../../shared/wizard/wizard-hat';
+} from "@angular/core";
+import { takeUntilDestroyed } from "@angular/core/rxjs-interop";
+import {
+  NavigationEnd,
+  Router,
+  RouterLink,
+  RouterLinkActive,
+} from "@angular/router";
+import { filter } from "rxjs";
+import { AuthService } from "../../core/auth/auth.service";
+import { MyProfileService } from "../../core/events/my-profile.service";
+import { MemberAvatar } from "../../shared/member-avatar/member-avatar";
+import type { SanityLink, SiteSettings } from "../../core/models";
+import { resolveLink } from "../../core/paths";
+import { WizardHat } from "../../shared/wizard/wizard-hat";
 
 const internalLink = (key: string, label: string, path: string) =>
   ({
     _key: key,
     label,
     path,
-    kind: 'internal',
+    kind: "internal",
     url: null,
     style: null,
     internal: null,
@@ -32,16 +37,16 @@ const internalLink = (key: string, label: string, path: string) =>
   };
 
 const DEFAULT_NAV = [
-  internalLink('blog', 'Blog', '/blog'),
-  internalLink('projects', 'Projects', '/projects'),
+  internalLink("blog", "Blog", "/blog"),
+  internalLink("projects", "Projects", "/projects"),
 ];
 
 @Component({
-  selector: 'app-header',
+  selector: "app-header",
   imports: [RouterLink, RouterLinkActive, WizardHat, MemberAvatar],
   host: {
-    '(document:click)': 'closeOnOutsideClick($event)',
-    '(document:keydown.escape)': 'closeAccount(true)',
+    "(document:click)": "closeOnOutsideClick($event)",
+    "(document:keydown.escape)": "closeAccount(true)",
   },
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -49,7 +54,7 @@ const DEFAULT_NAV = [
       <div class="container header__inner">
         <a routerLink="/" class="header__brand">
           <app-wizard-hat />
-          <span>{{ settings()?.title || 'Home' }}</span>
+          <span>{{ settings()?.title || "Home" }}</span>
         </a>
 
         <button
@@ -63,19 +68,24 @@ const DEFAULT_NAV = [
           <span class="header__toggle-bar" aria-hidden="true"></span>
         </button>
 
-        <nav id="site-nav" class="header__nav" [class.is-open]="menuOpen()" aria-label="Main">
+        <nav
+          id="site-nav"
+          class="header__nav"
+          [class.is-open]="menuOpen()"
+          aria-label="Main"
+        >
           <ul>
             @for (item of navItems(); track item._key) {
               @let target = resolve(item);
               <li>
-                @if (target?.kind === 'internal') {
+                @if (target?.kind === "internal") {
                   <a
                     [routerLink]="target.path"
                     routerLinkActive="is-active"
                     [routerLinkActiveOptions]="{ exact: target.path === '/' }"
                     >{{ item.label }}</a
                   >
-                } @else if (target?.kind === 'external') {
+                } @else if (target?.kind === "external") {
                   <a
                     [href]="target.href"
                     [attr.target]="target.newTab ? '_blank' : null"
@@ -87,8 +97,12 @@ const DEFAULT_NAV = [
             }
             <!-- Only known in the browser, so nothing is prerendered here -->
             @switch (auth.state().status) {
-              @case ('signedIn') {
-                <li><a routerLink="/members" routerLinkActive="is-active">Da Boiz</a></li>
+              @case ("signedIn") {
+                <li>
+                  <a routerLink="/members" routerLinkActive="is-active"
+                    >NEIA Boiz</a
+                  >
+                </li>
                 <li class="account" #account>
                   <button
                     #accountButton
@@ -99,7 +113,11 @@ const DEFAULT_NAV = [
                     [attr.aria-expanded]="accountOpen()"
                     (click)="toggleAccount()"
                   >
-                    <app-member-avatar [name]="displayName()" [url]="avatarUrl()" [size]="34" />
+                    <app-member-avatar
+                      [name]="displayName()"
+                      [url]="avatarUrl()"
+                      [size]="34"
+                    />
                     <span class="account__label">{{ displayName() }}</span>
                     <span class="visually-hidden">: account menu</span>
                   </button>
@@ -112,20 +130,32 @@ const DEFAULT_NAV = [
                     >
                       @if (profiles.available()) {
                         <li role="none">
-                          <a role="menuitem" routerLink="/profile" (click)="closeAccount()">
+                          <a
+                            role="menuitem"
+                            routerLink="/profile"
+                            (click)="closeAccount()"
+                          >
                             Profile settings
                           </a>
                         </li>
                       }
                       <li role="none">
-                        <button role="menuitem" type="button" (click)="signOut()">Log out</button>
+                        <button
+                          role="menuitem"
+                          type="button"
+                          (click)="signOut()"
+                        >
+                          Log out
+                        </button>
                       </li>
                     </ul>
                   }
                 </li>
               }
-              @case ('signedOut') {
-                <li><a routerLink="/login" routerLinkActive="is-active">Log in</a></li>
+              @case ("signedOut") {
+                <li>
+                  <a routerLink="/login" routerLinkActive="is-active">Log in</a>
+                </li>
               }
             }
           </ul>
@@ -133,22 +163,28 @@ const DEFAULT_NAV = [
       </div>
     </header>
   `,
-  styleUrl: './header.scss',
+  styleUrl: "./header.scss",
 })
 export class Header {
   private readonly router = inject(Router);
   protected readonly auth = inject(AuthService);
   protected readonly profiles = inject(MyProfileService);
 
-  private readonly account = viewChild<ElementRef<HTMLElement>>('account');
-  private readonly accountButton = viewChild<ElementRef<HTMLButtonElement>>('accountButton');
+  private readonly account = viewChild<ElementRef<HTMLElement>>("account");
+  private readonly accountButton =
+    viewChild<ElementRef<HTMLButtonElement>>("accountButton");
   protected readonly accountOpen = signal(false);
 
   /** Profile name if set, else the part of the email before the @. */
   protected readonly displayName = computed(
-    () => this.profiles.profile()?.name ?? this.auth.user()?.email.split('@')[0] ?? 'Account',
+    () =>
+      this.profiles.profile()?.name ??
+      this.auth.user()?.email.split("@")[0] ??
+      "Account",
   );
-  protected readonly avatarUrl = computed(() => this.profiles.profile()?.avatarUrl ?? null);
+  protected readonly avatarUrl = computed(
+    () => this.profiles.profile()?.avatarUrl ?? null,
+  );
 
   readonly settings = input<SiteSettings | null>();
 
@@ -188,7 +224,11 @@ export class Header {
 
   protected closeOnOutsideClick(event: MouseEvent): void {
     const account = this.account()?.nativeElement;
-    if (this.accountOpen() && account && !account.contains(event.target as Node)) {
+    if (
+      this.accountOpen() &&
+      account &&
+      !account.contains(event.target as Node)
+    ) {
       this.accountOpen.set(false);
     }
   }
@@ -197,18 +237,20 @@ export class Header {
   protected menuKeys(event: KeyboardEvent): void {
     const items = this.menuItems();
     const index = items.indexOf(document.activeElement as HTMLElement);
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      const step = event.key === 'ArrowDown' ? 1 : -1;
+      const step = event.key === "ArrowDown" ? 1 : -1;
       items[(index + step + items.length) % items.length]?.focus();
-    } else if (event.key === 'Tab') {
+    } else if (event.key === "Tab") {
       this.accountOpen.set(false);
     }
   }
 
   private menuItems(): HTMLElement[] {
     return [
-      ...(this.account()?.nativeElement.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []),
+      ...(this.account()?.nativeElement.querySelectorAll<HTMLElement>(
+        '[role="menuitem"]',
+      ) ?? []),
     ];
   }
 
@@ -218,7 +260,7 @@ export class Header {
     this.menuOpen.set(false);
     // Leave pages that need a login
     if (/^\/(members|family|events|profile)(\/|$|\?|#)/.test(this.router.url)) {
-      await this.router.navigateByUrl('/');
+      await this.router.navigateByUrl("/");
     }
   }
 }
