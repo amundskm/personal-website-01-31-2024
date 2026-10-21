@@ -9,7 +9,12 @@ import {
   shortDateLabel,
 } from './events';
 
-export type EmailKind = 'poll' | 'confirmed' | 'updated' | 'cancelled' | 'restored' | 'reminder';
+/**
+ * 'poll' and 'invited' invite someone to a new poll or set-date event;
+ * 'confirmed' tells the invited that a poll's date was picked.
+ */
+export type EmailKind =
+  'poll' | 'invited' | 'confirmed' | 'updated' | 'cancelled' | 'restored' | 'reminder';
 
 export interface Email {
   subject: string;
@@ -50,7 +55,7 @@ export type EventRole = 'coOrganizer' | 'organizer';
 
 /**
  * The email sent to members about an event, in the site's style. With a
- * `role`, a 'poll' or 'confirmed' email instead tells them they were made the
+ * `role`, a 'poll' or 'invited' email instead tells them they were made the
  * co-organizer, or were handed the event as its organizer.
  */
 export function eventEmail(
@@ -79,6 +84,12 @@ export function eventEmail(
       eyebrow: 'Date poll',
       intro: `${extra.by ?? 'Someone'} wants to plan this. Mark which dates work for you, it only takes a few seconds.`,
       button: 'Vote on dates',
+    },
+    invited: {
+      subject: `You're invited: ${event.title}${when ? ` (${shortDate(when)})` : ''}`,
+      eyebrow: "You're invited",
+      intro: `${extra.by ?? 'Someone'} planned this. Let everyone know if you're coming.`,
+      button: 'RSVP & add to calendar',
     },
     confirmed: {
       subject: `It's on: ${event.title}${when ? ` (${shortDate(when)})` : ''}`,
@@ -133,7 +144,7 @@ export function eventEmail(
       footer: "You're getting this because you were handed this event on neiaboiz.com.",
     },
   };
-  const role = kind === 'poll' || kind === 'confirmed' ? extra.role : undefined;
+  const role = kind === 'poll' || kind === 'invited' ? extra.role : undefined;
   const c = role ? roleCopy[role] : copy[kind];
   const footer = role ? roleCopy[role].footer : FOOTER;
   const buttonUrl = kind === 'cancelled' ? `${SITE_URL}/events` : url;

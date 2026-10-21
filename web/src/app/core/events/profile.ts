@@ -5,9 +5,9 @@
 
 /** Which event emails a member wants. */
 export interface EmailPrefs {
-  /** A new date poll. */
+  /** Being invited to a new event or date poll (the key predates set-date invitations). */
   polls: boolean;
-  /** An event confirmed, changed or cancelled. */
+  /** An event you're invited to getting its date, changing, or being cancelled or restored. */
   updates: boolean;
   reminders: boolean;
   /** Comments and suggestions on events you organize. */
@@ -33,8 +33,16 @@ export const NO_EMAILS: EmailPrefs = {
 };
 
 export const PREF_LABELS: { key: keyof EmailPrefs; label: string; hint: string }[] = [
-  { key: 'polls', label: 'New date polls', hint: 'When someone starts planning an event' },
-  { key: 'updates', label: 'Event updates', hint: 'Confirmed, changed, cancelled or restored' },
+  {
+    key: 'polls',
+    label: 'New events and polls',
+    hint: "When you're invited to a new event or date poll",
+  },
+  {
+    key: 'updates',
+    label: 'Event updates',
+    hint: "When an event you're invited to gets its date, changes, or is cancelled or restored",
+  },
   {
     key: 'reminders',
     label: 'Reminders',
@@ -51,6 +59,7 @@ export const PREF_LABELS: { key: keyof EmailPrefs; label: string; hint: string }
 /** Every kind of event email, and the preference that controls it. */
 export type NotificationKind =
   | 'poll'
+  | 'invited'
   | 'confirmed'
   | 'updated'
   | 'cancelled'
@@ -66,6 +75,7 @@ export type NotificationKind =
 export function prefFor(kind: NotificationKind): keyof EmailPrefs {
   switch (kind) {
     case 'poll':
+    case 'invited':
       return 'polls';
     case 'confirmed':
     case 'updated':

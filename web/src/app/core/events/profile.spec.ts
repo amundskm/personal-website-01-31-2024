@@ -3,6 +3,8 @@ import { DEFAULT_PREFS, initials, NO_EMAILS, normalizePrefs, prefFor, wantsEmail
 describe('email preferences', () => {
   it('maps each email to its preference', () => {
     expect(prefFor('poll')).toBe('polls');
+    expect(prefFor('invited')).toBe('polls');
+    expect(prefFor('confirmed')).toBe('updates');
     expect(prefFor('cancelled')).toBe('updates');
     expect(prefFor('restored')).toBe('updates');
     expect(prefFor('reminder')).toBe('reminders');
