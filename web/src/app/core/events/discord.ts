@@ -3,7 +3,6 @@ import {
   formatEventDate,
   type GroupEvent,
   isForEveryone,
-  matchingGroup,
   type Member,
   shortDateLabel,
 } from './events';
@@ -30,17 +29,33 @@ export interface DiscordMessage {
 export const DISCORD_GROUP = 'da-boiz';
 
 /**
- * New polls and new set-date events for everyone in NEIA Boiz, or for exactly
- * Da Boiz, are posted; events for anyone else (visible or hidden) never are.
+ * New polls and new set-date events for everyone in NEIA Boiz (no invite list,
+ * or a list of every member), or for exactly Da Boiz, are posted; events for
+ * any other group or list (visible or hidden) never are.
+ *
+ * `members` is everyone in neia-boiz, each with the invite groups they're in.
  */
 export function postsToDiscord(
   event: Pick<GroupEvent, 'status' | 'invitees' | 'createdBy'>,
   members: Pick<Member, 'id' | 'groups'>[],
 ): boolean {
   if (event.status !== 'polling' && event.status !== 'confirmed') return false;
+  if (isForEveryone(event)) return true;
+  const isExactly = (ids: string[]) => isExactList(event.invitees!, event.createdBy, ids);
   return (
-    isForEveryone(event) ||
-    matchingGroup(event.invitees, event.createdBy, members) === DISCORD_GROUP
+    isExactly(members.map((m) => m.id)) ||
+    isExactly(members.filter((m) => m.groups?.includes(DISCORD_GROUP)).map((m) => m.id))
+  );
+}
+
+/** Whether an invite list is exactly these people, ignoring the (always invited) organizer. */
+function isExactList(invitees: readonly string[], organizerId: string, ids: string[]): boolean {
+  const invited = new Set(invitees.filter((id) => id !== organizerId));
+  const expected = new Set(ids.filter((id) => id !== organizerId));
+  return (
+    expected.size > 0 &&
+    expected.size === invited.size &&
+    [...expected].every((id) => invited.has(id))
   );
 }
 
