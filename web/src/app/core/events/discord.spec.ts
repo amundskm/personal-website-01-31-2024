@@ -37,14 +37,35 @@ describe('Discord posts', () => {
       { id: 'bob', groups: ['da-boiz'] },
       { id: 'jim', groups: ['da-boiz'] },
       { id: 'sue', groups: ['da-girls'] },
+      { id: 'tom', groups: ['golf'] },
     ];
     expect(postsToDiscord({ ...poll, invitees: ['bob', 'jim'] }, members)).toBe(true);
     expect(postsToDiscord({ ...poll, invitees: ['me', 'bob', 'jim'] }, members)).toBe(true);
     expect(postsToDiscord({ ...poll, invitees: ['sue'] }, members)).toBe(false);
     expect(postsToDiscord({ ...poll, invitees: ['bob'] }, members)).toBe(false);
     expect(postsToDiscord({ ...poll, invitees: ['bob', 'jim', 'sue'] }, members)).toBe(false);
+    expect(postsToDiscord({ ...poll, invitees: ['tom'] }, members)).toBe(false);
     // No member list (e.g. Cognito failed): only everyone-events post
     expect(postsToDiscord({ ...poll, invitees: ['bob', 'jim'] }, [])).toBe(false);
+  });
+
+  it('posts a hand-picked list of every NEIA Boiz member, as for everyone', () => {
+    const members = [
+      { id: 'me', groups: [] },
+      { id: 'bob', groups: ['da-boiz'] },
+      { id: 'sue', groups: ['da-girls'] },
+    ];
+    expect(postsToDiscord({ ...poll, invitees: ['bob', 'sue'] }, members)).toBe(true);
+    expect(postsToDiscord({ ...poll, invitees: ['sue'] }, members)).toBe(false);
+  });
+
+  it('posts Da Boiz even when another group has the same people', () => {
+    const members = [
+      { id: 'me', groups: ['golf', 'da-boiz'] },
+      { id: 'bob', groups: ['golf', 'da-boiz'] },
+      { id: 'sue', groups: [] },
+    ];
+    expect(postsToDiscord({ ...poll, invitees: ['bob'] }, members)).toBe(true);
   });
 
   it('shows a poll\u2019s title, dates, deadline and link, but not its location or details', () => {
