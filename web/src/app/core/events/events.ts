@@ -93,6 +93,8 @@ export interface GroupEvent {
   /** What a cancelled event was before, so it can be restored. */
   cancelledFrom?: Exclude<EventStatus, 'cancelled'> | null;
   createdBy: string;
+  /** A member who manages the event with the organizer (and is always invited). */
+  coOrganizer?: string | null;
   createdAt: string;
   options: EventOption[];
   /** By member id (Cognito sub), then option id. */
@@ -209,6 +211,8 @@ export interface EventInput {
   inviteesOnly: boolean;
   /** Polls: when voting closes; null for no deadline. */
   voteBy: VoteDeadline | null;
+  /** The member who manages it with the organizer; null = none, missing = unchanged. */
+  coOrganizer?: string | null;
 }
 
 /** Most people a single event can invite individually. */
@@ -271,12 +275,27 @@ export function formatDeadline(voteBy: VoteDeadline): string {
 /** Whether the event is for everyone, or a chosen list. */
 export const isForEveryone = (event: Pick<GroupEvent, 'invitees'>) => !event.invitees;
 
-/** Whether `memberId` is invited: everyone is, unless there's a list (the organizer always is). */
+/** The organizer and the co-organizer, if any. */
+export const organizerIds = (event: Pick<GroupEvent, 'createdBy' | 'coOrganizer'>) =>
+  event.coOrganizer ? [event.createdBy, event.coOrganizer] : [event.createdBy];
+
+/**
+ * Only the organizer can hand the event off, and only to its co-organizer
+ * (who can't take it themselves).
+ */
+export const canHandOff = (
+  event: Pick<GroupEvent, 'createdBy' | 'coOrganizer' | 'status'>,
+  memberId: string,
+) => !!event.coOrganizer && event.status !== 'cancelled' && event.createdBy === memberId;
+
+/** Whether `memberId` is invited: everyone is, unless there's a list (organizers always are). */
 export function isInvited(
-  event: Pick<GroupEvent, 'invitees' | 'createdBy'>,
+  event: Pick<GroupEvent, 'invitees' | 'createdBy' | 'coOrganizer'>,
   memberId: string,
 ): boolean {
-  return !event.invitees || event.createdBy === memberId || event.invitees.includes(memberId);
+  return (
+    !event.invitees || organizerIds(event).includes(memberId) || event.invitees.includes(memberId)
+  );
 }
 
 /**
@@ -284,7 +303,7 @@ export function isInvited(
  * that they aren't on yet (and that isn't cancelled).
  */
 export function canJoin(
-  event: Pick<GroupEvent, 'invitees' | 'inviteesOnly' | 'createdBy' | 'status'>,
+  event: Pick<GroupEvent, 'invitees' | 'inviteesOnly' | 'createdBy' | 'coOrganizer' | 'status'>,
   memberId: string,
 ): boolean {
   return (
@@ -295,22 +314,22 @@ export function canJoin(
   );
 }
 
-/** Whether `memberId` can take themselves off the invite list (never the organizer). */
+/** Whether `memberId` can take themselves off the invite list (never an organizer). */
 export function canLeave(
-  event: Pick<GroupEvent, 'invitees' | 'createdBy' | 'status'>,
+  event: Pick<GroupEvent, 'invitees' | 'createdBy' | 'coOrganizer' | 'status'>,
   memberId: string,
 ): boolean {
   return (
     !!event.invitees &&
     event.status !== 'cancelled' &&
-    event.createdBy !== memberId &&
+    !organizerIds(event).includes(memberId) &&
     event.invitees.includes(memberId)
   );
 }
 
 /** Whether `memberId` can see the event at all. */
 export function canSee(
-  event: Pick<GroupEvent, 'invitees' | 'inviteesOnly' | 'createdBy'>,
+  event: Pick<GroupEvent, 'invitees' | 'inviteesOnly' | 'createdBy' | 'coOrganizer'>,
   memberId: string,
   isAdmin: boolean,
 ): boolean {
@@ -319,17 +338,18 @@ export function canSee(
 
 /** The members who are invited, in the given order. */
 export function invitedMembers<T extends { id: string }>(
-  event: Pick<GroupEvent, 'invitees' | 'createdBy'>,
+  event: Pick<GroupEvent, 'invitees' | 'createdBy' | 'coOrganizer'>,
   members: T[],
 ): T[] {
   return members.filter((m) => isInvited(event, m.id));
 }
 
+/** The organizer, co-organizers and admins can edit, confirm, cancel and restore it. */
 export const canManage = (
-  event: Pick<GroupEvent, 'createdBy'>,
+  event: Pick<GroupEvent, 'createdBy' | 'coOrganizer'>,
   memberId: string,
   isAdmin: boolean,
-) => isAdmin || event.createdBy === memberId;
+) => isAdmin || organizerIds(event).includes(memberId);
 
 /**
  * The UTC instant of a local date and time in `timeZone`
@@ -476,6 +496,11 @@ export function validateEventInput(value: unknown): string | null {
     if (!input.invitees.length) return 'Pick at least one person to invite, or invite everyone.';
   }
   if (typeof input.inviteesOnly !== 'boolean') return 'Invalid visibility';
+  if (
+    input.coOrganizer != null &&
+    (typeof input.coOrganizer !== 'string' || input.coOrganizer.length > 100)
+  )
+    return 'Invalid co-organizer';
   if (input.voteBy !== null && input.voteBy !== undefined) {
     if (typeof input.voteBy !== 'object' || !DATE.test(String(input.voteBy.date)))
       return 'Pick a day for voting to close.';

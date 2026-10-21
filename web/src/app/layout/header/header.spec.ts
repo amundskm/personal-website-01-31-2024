@@ -45,10 +45,10 @@ describe('Header account menu', () => {
   const menuItems = (el: HTMLElement) =>
     [...el.querySelectorAll('[role="menuitem"]')].map((i) => i.textContent!.trim());
 
-  it('shows "Da Boiz" and the member photo, which opens Profile settings and Log out', async () => {
+  it('shows "NEIA Boiz" and the member photo, which opens Profile settings and Log out', async () => {
     const el = await render(['neia-boiz'], { name: 'Pat', avatarUrl: null });
     expect([...el.querySelectorAll('nav a')].map((a) => a.textContent!.trim())).toContain(
-      'Da Boiz',
+      'NEIA Boiz',
     );
 
     const button = el.querySelector<HTMLButtonElement>('.account__button')!;

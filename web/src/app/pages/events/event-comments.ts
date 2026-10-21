@@ -91,8 +91,8 @@ const STATUS_LABELS: Record<SuggestionStatus, string> = {
         <p class="ev-meta">
           {{
             kind() === 'suggestion'
-              ? 'The organizer gets an email and can accept or decline it.'
-              : 'The organizer gets an email.'
+              ? 'The organizer and co-organizer get an email and can accept or decline it.'
+              : 'The organizer and co-organizer get an email.'
           }}
         </p>
       </form>

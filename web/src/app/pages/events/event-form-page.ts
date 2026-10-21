@@ -74,7 +74,7 @@ interface DateRow {
         } @else if (id() && existing.error()) {
           <app-load-error />
         } @else if (id() && !allowed()) {
-          <p class="empty">Only the organizer can edit this event.</p>
+          <p class="empty">Only the organizer or co-organizer can edit this event.</p>
         } @else {
           <form class="ev-form" (submit)="submit($event)">
             <label class="ev-field">
@@ -360,7 +360,8 @@ interface DateRow {
                       <label class="ev-check">
                         <input
                           type="checkbox"
-                          [checked]="selected().has(member.id)"
+                          [checked]="selected().has(member.id) || coOrganizer() === member.id"
+                          [disabled]="coOrganizer() === member.id"
                           (change)="toggleInvitee(member.id, $any($event.target).checked)"
                         />
                         <app-member-avatar
@@ -396,6 +397,25 @@ interface DateRow {
                 </div>
               }
             </fieldset>
+
+            <label class="ev-field">
+              <span>Co-organizer <small>(optional)</small></span>
+              <select
+                [value]="coOrganizer() ?? ''"
+                (change)="setCoOrganizer($any($event.target).value || null)"
+              >
+                <option value="" [selected]="!coOrganizer()">No co-organizer</option>
+                @for (member of invitable(); track member.id) {
+                  <option [value]="member.id" [selected]="coOrganizer() === member.id">
+                    {{ member.name }}
+                  </option>
+                }
+              </select>
+              <small
+                >They're invited, get an email saying they're co-organizer, and can edit or cancel
+                the event with {{ organizerLabel() }}.</small
+              >
+            </label>
 
             <fieldset class="ev-fieldset">
               <legend>Email reminders</legend>
@@ -453,6 +473,13 @@ export class EventFormPage implements OnInit {
 
   protected readonly inviteMode = signal<'everyone' | 'selected'>('everyone');
   protected readonly selected = signal<Set<string>>(new Set());
+  /** Always invited, so picking one also ticks them on the invite list. */
+  protected readonly coOrganizer = signal<string | null>(null);
+
+  protected setCoOrganizer(id: string | null): void {
+    this.coOrganizer.set(id);
+    if (id) this.toggleInvitee(id, true);
+  }
   protected readonly inviteesOnly = signal(true);
 
   /** Polls: an optional voting deadline (off unless the organizer turns it on). */
@@ -723,6 +750,7 @@ export class EventFormPage implements OnInit {
       reminderOffsets: this.reminders(),
       invitees: this.inviteMode() === 'selected' ? [...this.selected()] : null,
       inviteesOnly: this.inviteMode() === 'selected' && this.inviteesOnly(),
+      coOrganizer: this.coOrganizer(),
       voteBy:
         this.mode() === 'poll' && this.hasDeadline() && this.deadlineDate()
           ? { date: this.deadlineDate(), time: this.deadlineTime() || null }
@@ -770,6 +798,7 @@ export class EventFormPage implements OnInit {
     this.deadlineDate.set(event.voteBy?.date ?? '');
     this.deadlineTime.set(event.voteBy?.time ?? '');
     this.selected.set(new Set(event.invitees ?? []));
+    this.coOrganizer.set(event.coOrganizer ?? null);
     this.inviteesOnly.set(event.invitees ? !!event.inviteesOnly : true);
     this.title.set(event.title);
     this.details.set(event.details);

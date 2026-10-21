@@ -43,6 +43,23 @@ describe('eventEmail', () => {
     expect(email.text).toContain('Where: The cabin, 1 Example Rd');
   });
 
+  it('tells a new co-organizer what they can do, instead of a plain invitation', () => {
+    const poll = { ...event, status: 'polling' as const, confirmed: null };
+    const email = eventEmail('poll', poll, url, { by: 'Alice', role: 'coOrganizer' });
+    expect(email.subject).toBe("You're a co-organizer: Lake <weekend>");
+    expect(email.text).toContain('Alice made you the co-organizer. You can edit or cancel');
+    expect(email.text).toContain('pick the date when voting is done');
+    expect(email.text).toContain('Date 1: Sat, Jun 1, 2030 · All day');
+    expect(email.text).toContain('you were made the co-organizer of this event');
+  });
+
+  it('tells someone handed the event that they are the organizer now', () => {
+    const email = eventEmail('confirmed', event, url, { by: 'Alice', role: 'organizer' });
+    expect(email.subject).toBe("You're the organizer now: Lake <weekend>");
+    expect(email.text).toContain("Alice handed this event to you, so you're the organizer now.");
+    expect(email.text).toContain('When: Sat, Jun 1, 2030 · 6:00 PM');
+  });
+
   it('links a cancellation to the events list, without the details', () => {
     const email = eventEmail('cancelled', { ...event, status: 'cancelled' }, url);
     expect(email.text).not.toContain('Bring a chair');
@@ -109,7 +126,7 @@ describe('restored and comment emails', () => {
     );
     expect(suggestion.subject).toBe('Bob suggested a change to Lake <weekend>');
     expect(suggestion.text).toContain('Start at 7?');
-    expect(suggestion.text).toContain('because you organize this event');
+    expect(suggestion.text).toContain('because you organize or co-organize this event');
 
     const reply = commentEmail('reply', event, { body: 'Agreed' }, 'Carol', url);
     expect(reply.subject).toBe('Carol replied to your comment on Lake <weekend>');

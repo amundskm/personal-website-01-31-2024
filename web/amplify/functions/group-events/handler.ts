@@ -52,6 +52,7 @@ import {
   eventEmail,
   memberJoinedEmail,
   pollClosedEmail,
+  type EventRole,
   type PollResult,
   type RecipientLinks,
 } from '../../../src/app/core/events/event-email';
@@ -59,6 +60,7 @@ import {
   AVATAR_MAX_BYTES,
   type EmailPrefs,
   NO_EMAILS,
+  type NotificationKind,
   normalizePrefs,
   wantsEmail,
 } from '../../../src/app/core/events/profile';
@@ -87,6 +89,8 @@ import {
   invitedMembers,
   matchingGroup,
   isInvited,
+  canHandOff,
+  organizerIds,
   type Member,
   type Reminder,
   type Rsvp,
@@ -220,6 +224,8 @@ async function route(event: ApiEvent, caller: Caller): Promise<Result> {
     return cancel(caller, id);
   } else if (action === 'restore' && method === 'POST') {
     return restore(caller, id, body);
+  } else if (action === 'handoff' && method === 'POST') {
+    return handOff(caller, id);
   } else if (action === 'join' && method === 'POST') {
     return join(caller, id);
   } else if (action === 'leave' && method === 'POST') {
@@ -287,7 +293,8 @@ async function create(caller: Caller, body: Record<string, unknown>): Promise<Re
   const options = input.options.map((date) => ({ id: newId(), ...cleanDate(date) }));
   const confirmed = input.confirmNow ? cleanDate(input.options[0]) : null;
   const reminders = reminderList(input.reminderOffsets, []);
-  const invitees = await cleanInvitees(input.invitees, caller.id);
+  const coOrganizer = await cleanCoOrganizer(input.coOrganizer ?? null, caller.id);
+  const invitees = withCoOrganizer(await cleanInvitees(input.invitees, caller.id), coOrganizer);
   if (invitees && !invitees.length) {
     return json(400, { message: 'Pick at least one person to invite, or invite everyone.' });
   }
@@ -305,6 +312,7 @@ async function create(caller: Caller, body: Record<string, unknown>): Promise<Re
     timeZone: DEFAULT_TIME_ZONE,
     status: confirmed ? 'confirmed' : 'polling',
     createdBy: caller.id,
+    coOrganizer,
     createdAt: now.toISOString(),
     options,
     votes: {},
@@ -320,7 +328,10 @@ async function create(caller: Caller, body: Record<string, unknown>): Promise<Re
   await db.send(
     new PutCommand({ TableName: TABLE, Item: { pk: eventKey(event.id), type: 'event', ...event } }),
   );
-  await notify(confirmed ? 'confirmed' : 'poll', event, caller);
+  // The co-organizer gets their own email instead of the invitation
+  const skip = coOrganizer ? [coOrganizer] : [];
+  await notify(confirmed ? 'confirmed' : 'poll', event, caller, undefined, undefined, skip);
+  if (coOrganizer) await notifyRole(event, caller, coOrganizer, 'coOrganizer');
   await postToDiscord(event, caller);
   return json(201, event);
 }
@@ -347,7 +358,16 @@ async function edit(caller: Caller, id: string, body: Record<string, unknown>): 
     !!existing.confirmed && !!confirmed && !sameDate(existing.confirmed, confirmed);
   const newlyConfirmed = existing.status === 'polling' && input.confirmNow;
 
-  const invitees = await cleanInvitees(input.invitees, existing.createdBy);
+  // Left out (e.g. an older page) keeps the current co-organizer
+  const coOrganizer =
+    input.coOrganizer === undefined
+      ? (existing.coOrganizer ?? null)
+      : await cleanCoOrganizer(input.coOrganizer, existing.createdBy);
+  const newCoOrganizer = coOrganizer !== (existing.coOrganizer ?? null) ? coOrganizer : null;
+  const invitees = withCoOrganizer(
+    await cleanInvitees(input.invitees, existing.createdBy),
+    coOrganizer,
+  );
   if (invitees && !invitees.length) {
     return json(400, { message: 'Pick at least one person to invite, or invite everyone.' });
   }
@@ -382,6 +402,7 @@ async function edit(caller: Caller, id: string, body: Record<string, unknown>): 
     reminders,
     invitees,
     inviteesOnly: !!invitees && input.inviteesOnly,
+    coOrganizer,
     voteBy,
     voteClosedNotified: deadlineChanged ? null : (existing.voteClosedNotified ?? null),
   };
@@ -390,7 +411,7 @@ async function edit(caller: Caller, id: string, body: Record<string, unknown>): 
       TableName: TABLE,
       Key: { pk: eventKey(id) },
       UpdateExpression:
-        'SET title = :title, details = :details, #location = :location, #options = :options, confirmed = :confirmed, #status = :status, reminders = :reminders, invitees = :invitees, inviteesOnly = :inviteesOnly, voteBy = :voteBy, voteClosedNotified = :voteClosedNotified',
+        'SET title = :title, details = :details, #location = :location, #options = :options, confirmed = :confirmed, #status = :status, reminders = :reminders, invitees = :invitees, inviteesOnly = :inviteesOnly, coOrganizer = :coOrganizer, voteBy = :voteBy, voteClosedNotified = :voteClosedNotified',
       ConditionExpression: 'attribute_exists(pk) AND #status <> :cancelled',
       ExpressionAttributeNames: {
         '#location': 'location',
@@ -407,14 +428,17 @@ async function edit(caller: Caller, id: string, body: Record<string, unknown>): 
         ':reminders': updated.reminders,
         ':invitees': updated.invitees,
         ':inviteesOnly': updated.inviteesOnly,
+        ':coOrganizer': updated.coOrganizer,
         ':voteBy': updated.voteBy,
         ':voteClosedNotified': updated.voteClosedNotified,
         ':cancelled': 'cancelled',
       },
     }),
   );
-  if (newlyConfirmed) await notify('confirmed', updated, caller);
-  else if (dateChanged) await notify('updated', updated, caller);
+  // A new co-organizer gets their own email instead of any of these
+  const skip = newCoOrganizer ? [newCoOrganizer] : [];
+  if (newlyConfirmed) await notify('confirmed', updated, caller, undefined, undefined, skip);
+  else if (dateChanged) await notify('updated', updated, caller, undefined, undefined, skip);
   else {
     // People added to the list get the invitation they missed
     const members = await loadMembers();
@@ -428,9 +452,11 @@ async function edit(caller: Caller, id: string, body: Record<string, unknown>): 
         caller,
         undefined,
         new Set(added),
+        skip,
       );
     }
   }
+  if (newCoOrganizer) await notifyRole(updated, caller, newCoOrganizer, 'coOrganizer');
   return json(200, updated);
 }
 
@@ -549,6 +575,52 @@ async function cancel(caller: Caller, id: string): Promise<Result> {
 }
 
 /**
+ * The organizer hands the event to its co-organizer, who becomes the organizer;
+ * the old organizer stays invited as an ordinary member (votes and RSVP kept).
+ */
+async function handOff(caller: Caller, id: string): Promise<Result> {
+  const event = await loadVisibleEvent(caller, id);
+  if (!event) return json(404, { message: 'Event not found' });
+  if (!canHandOff(event, caller.id)) {
+    return json(403, {
+      message: 'Only the organizer can hand off this event, to its co-organizer.',
+    });
+  }
+  const organizer = event.coOrganizer!;
+  // An invite list keeps the old organizer, who's no longer invited automatically
+  const invitees = event.invitees
+    ? [...event.invitees.filter((m) => m !== organizer), event.createdBy]
+    : null;
+  try {
+    await db.send(
+      new UpdateCommand({
+        TableName: TABLE,
+        Key: { pk: eventKey(id) },
+        UpdateExpression: 'SET createdBy = :new, coOrganizer = :none, invitees = :invitees',
+        // Re-checked in case the co-organizer changed meanwhile
+        ConditionExpression: 'createdBy = :me AND coOrganizer = :new AND #status <> :cancelled',
+        ExpressionAttributeNames: { '#status': 'status' },
+        ExpressionAttributeValues: {
+          ':new': organizer,
+          ':none': null,
+          ':invitees': invitees,
+          ':me': caller.id,
+          ':cancelled': 'cancelled',
+        },
+      }),
+    );
+  } catch (error) {
+    if ((error as { name?: string }).name === 'ConditionalCheckFailedException') {
+      return json(409, { message: 'This event changed. Reload and try again.' });
+    }
+    throw error;
+  }
+  const handed: GroupEvent = { ...event, createdBy: organizer, coOrganizer: null, invitees };
+  await notifyRole(handed, caller, organizer, 'organizer');
+  return json(200, await withFileLinks(handed));
+}
+
+/**
  * Un-cancels an event, back to a poll (votes kept) or a confirmed event (date
  * and RSVPs kept). Reminders that came due while it was cancelled are skipped.
  * With notify, everyone who wants event updates gets a "back on" email.
@@ -591,21 +663,22 @@ async function join(caller: Caller, id: string): Promise<Result> {
   const joined: GroupEvent = { ...event, invitees: [...event.invitees!, caller.id] };
 
   const members = await loadMembers(true);
-  const organizer = members.find((m) => m.id === event.createdBy);
-  if (organizer && organizer.id !== caller.id && wantsEmail(organizer.prefs, 'joined')) {
-    const name = members.find((m) => m.id === caller.id)?.name ?? 'Someone';
-    await sendEmail(
-      organizer,
-      memberJoinedEmail(
-        event,
-        name,
-        invitedMembers(joined, members).length,
-        `${env.SITE_URL}/events/${id}`,
-        await recipientLinks(organizer.id),
+  const name = members.find((m) => m.id === caller.id)?.name ?? 'Someone';
+  await Promise.all(
+    organizersToEmail(event, members, 'joined', caller.id).map(async (organizer) =>
+      sendEmail(
+        organizer,
+        memberJoinedEmail(
+          event,
+          name,
+          invitedMembers(joined, members).length,
+          `${env.SITE_URL}/events/${id}`,
+          await recipientLinks(organizer.id),
+        ),
+        'joined',
       ),
-      'joined',
-    );
-  }
+    ),
+  );
   return json(200, await withFileLinks(joined));
 }
 
@@ -1081,22 +1154,26 @@ async function addComment(
     }),
   );
 
-  // Top-level comments and suggestions go to the organizer; replies to the parent's author
-  const recipientId = parent ? parent.authorId : event.createdBy;
-  if (recipientId && recipientId !== caller.id) {
-    const members = await loadMembers(true);
-    const recipient = members.find((m) => m.id === recipientId);
-    const kind: CommentEmailKind = parent ? 'reply' : input.kind;
-    if (recipient && wantsEmail(recipient.prefs, kind)) {
-      const author = members.find((m) => m.id === caller.id)?.name ?? 'Someone';
-      const url = `${env.SITE_URL}/events/${eventId}#comment-${comment.id}`;
-      const links = await recipientLinks(recipient.id);
-      await sendEmail(
-        recipient,
-        commentEmail(kind, event, comment, author, url, links),
-        `comment:${kind}`,
-      );
-    }
+  // Top-level comments and suggestions go to the organizers; replies to the parent's author
+  const kind: CommentEmailKind = parent ? 'reply' : input.kind;
+  const members = await loadMembers(true);
+  const recipients = parent
+    ? members.filter(
+        (m) => m.id === parent.authorId && m.id !== caller.id && wantsEmail(m.prefs, kind),
+      )
+    : organizersToEmail(event, members, kind, caller.id);
+  if (recipients.length) {
+    const author = members.find((m) => m.id === caller.id)?.name ?? 'Someone';
+    const url = `${env.SITE_URL}/events/${eventId}#comment-${comment.id}`;
+    await Promise.all(
+      recipients.map(async (recipient) =>
+        sendEmail(
+          recipient,
+          commentEmail(kind, event, comment, author, url, await recipientLinks(recipient.id)),
+          `comment:${kind}`,
+        ),
+      ),
+    );
   }
   return json(201, toComment(comment));
 }
@@ -1243,11 +1320,11 @@ async function sendDueReminders(now: Date): Promise<void> {
   }
 }
 
-/** Emails the organizer the results once their poll's voting closes. */
+/** Emails the organizers the results once their poll's voting closes. */
 async function notifyPollClosed(event: GroupEvent): Promise<void> {
   const members = await loadMembers(true);
-  const organizer = members.find((m) => m.id === event.createdBy);
-  if (!organizer || !wantsEmail(organizer.prefs, 'pollClosed')) return;
+  const organizers = organizersToEmail(event, members, 'pollClosed');
+  if (!organizers.length) return;
 
   const best = new Set(bestOptionIds(event));
   const results: PollResult[] = scoreOptions(event).map((score) => ({
@@ -1259,21 +1336,36 @@ async function notifyPollClosed(event: GroupEvent): Promise<void> {
   }));
   const invited = invitedMembers(event, members);
   const notVoted = invited.filter((m) => !event.votes[m.id]).map((m) => m.name);
-  const email = pollClosedEmail(
-    event,
-    results,
-    invited.length - notVoted.length,
-    invited.length,
-    notVoted,
-    `${env.SITE_URL}/events/${event.id}`,
-    await recipientLinks(organizer.id),
+  await Promise.all(
+    organizers.map(async (organizer) => {
+      const email = pollClosedEmail(
+        event,
+        results,
+        invited.length - notVoted.length,
+        invited.length,
+        notVoted,
+        `${env.SITE_URL}/events/${event.id}`,
+        await recipientLinks(organizer.id),
+      );
+      await sendEmail(organizer, email, 'pollClosed');
+    }),
   );
-  await sendEmail(organizer, email, 'pollClosed');
 }
 
 // ---------------------------------------------------------------------------
 // Email
 // ---------------------------------------------------------------------------
+
+/** The organizer and co-organizers who want this kind of email, except whoever caused it. */
+function organizersToEmail(
+  event: GroupEvent,
+  members: MemberRecord[],
+  kind: NotificationKind,
+  except?: string,
+): MemberRecord[] {
+  const ids = organizerIds(event);
+  return members.filter((m) => ids.includes(m.id) && m.id !== except && wantsEmail(m.prefs, kind));
+}
 
 /**
  * Emails every member about the event, one message each (addresses stay
@@ -1287,6 +1379,8 @@ async function notify(
   reminderOffset?: number,
   /** Only these members (e.g. people just added to the invite list). */
   only?: Set<string>,
+  /** Never these members (e.g. new co-organizers, who get their own email). */
+  skip: string[] = [],
 ) {
   const members = await loadMembers(true);
   const by = actor ? members.find((m) => m.id === actor.id)?.name : undefined;
@@ -1295,6 +1389,7 @@ async function notify(
       m.id !== actor?.id &&
       isInvited(event, m.id) &&
       (!only || only.has(m.id)) &&
+      !skip.includes(m.id) &&
       wantsEmail(m.prefs, kind) &&
       !(kind === 'reminder' && event.rsvps[m.id] === 'no'),
   );
@@ -1308,6 +1403,25 @@ async function notify(
       await sendEmail(member, email, kind);
     }),
   );
+}
+
+/** Tells a member they were made co-organizer, or handed the event (instead of an invitation). */
+async function notifyRole(event: GroupEvent, actor: Caller, memberId: string, role: EventRole) {
+  if (memberId === actor.id || event.status === 'cancelled') return;
+  const members = await loadMembers(true);
+  const member = members.find((m) => m.id === memberId);
+  if (!member || !wantsEmail(member.prefs, 'coOrganizer')) return;
+  const email = eventEmail(
+    event.status === 'polling' ? 'poll' : 'confirmed',
+    event,
+    `${env.SITE_URL}/events/${event.id}`,
+    {
+      by: members.find((m) => m.id === actor.id)?.name,
+      role,
+      links: await recipientLinks(member.id),
+    },
+  );
+  await sendEmail(member, email, role);
 }
 
 /**
@@ -1589,6 +1703,18 @@ async function cleanInvitees(
   return [...new Set(invitees)].filter((id) => id !== organizer && members.has(id));
 }
 
+/** The co-organizer as stored: a current member who isn't the organizer, or null. */
+async function cleanCoOrganizer(id: string | null, organizer: string): Promise<string | null> {
+  if (!id || id === organizer) return null;
+  return (await loadMembers()).some((m) => m.id === id) ? id : null;
+}
+
+/** An invite list always includes the co-organizer (everyone-events need nothing). */
+const withCoOrganizer = (invitees: string[] | null, coOrganizer: string | null) =>
+  invitees && coOrganizer && !invitees.includes(coOrganizer)
+    ? [...invitees, coOrganizer]
+    : invitees;
+
 function cleanVoteBy(voteBy: EventInput['voteBy'] | undefined): VoteDeadline | null {
   if (!voteBy?.date) return null;
   return { date: voteBy.date, ...(voteBy.time ? { time: voteBy.time } : {}) };
@@ -1629,5 +1755,5 @@ function parseBody(body: string | undefined): Record<string, unknown> {
   }
 }
 
-const forbidden = () => json(403, { message: 'Only the organizer can change this event.' });
+const forbidden = () => json(403, { message: 'Only the organizers can change this event.' });
 const notInvited = () => json(403, { message: "You're not invited to this one." });
