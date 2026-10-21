@@ -330,7 +330,7 @@ async function create(caller: Caller, body: Record<string, unknown>): Promise<Re
   );
   // The co-organizer gets their own email instead of the invitation
   const skip = coOrganizer ? [coOrganizer] : [];
-  await notify(confirmed ? 'confirmed' : 'poll', event, caller, undefined, undefined, skip);
+  await notify(confirmed ? 'invited' : 'poll', event, caller, undefined, undefined, skip);
   if (coOrganizer) await notifyRole(event, caller, coOrganizer, 'coOrganizer');
   await postToDiscord(event, caller);
   return json(201, event);
@@ -447,7 +447,7 @@ async function edit(caller: Caller, id: string, body: Record<string, unknown>): 
       .map((m) => m.id);
     if (added.length) {
       await notify(
-        updated.status === 'polling' ? 'poll' : 'confirmed',
+        updated.status === 'polling' ? 'poll' : 'invited',
         updated,
         caller,
         undefined,
@@ -1412,7 +1412,7 @@ async function notifyRole(event: GroupEvent, actor: Caller, memberId: string, ro
   const member = members.find((m) => m.id === memberId);
   if (!member || !wantsEmail(member.prefs, 'coOrganizer')) return;
   const email = eventEmail(
-    event.status === 'polling' ? 'poll' : 'confirmed',
+    event.status === 'polling' ? 'poll' : 'invited',
     event,
     `${env.SITE_URL}/events/${event.id}`,
     {

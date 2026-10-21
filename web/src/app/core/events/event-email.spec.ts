@@ -54,10 +54,20 @@ describe('eventEmail', () => {
   });
 
   it('tells someone handed the event that they are the organizer now', () => {
-    const email = eventEmail('confirmed', event, url, { by: 'Alice', role: 'organizer' });
+    const email = eventEmail('invited', event, url, { by: 'Alice', role: 'organizer' });
     expect(email.subject).toBe("You're the organizer now: Lake <weekend>");
     expect(email.text).toContain("Alice handed this event to you, so you're the organizer now.");
     expect(email.text).toContain('When: Sat, Jun 1, 2030 · 6:00 PM');
+  });
+
+  it('invites people to a set-date event, apart from telling them a poll got its date', () => {
+    const invite = eventEmail('invited', event, url, { by: 'Bob' });
+    expect(invite.subject).toBe("You're invited: Lake <weekend> (Sat, Jun 1)");
+    expect(invite.text).toContain("Bob planned this. Let everyone know if you're coming.");
+    expect(invite.text).toContain('When: Sat, Jun 1, 2030 · 6:00 PM');
+    expect(eventEmail('confirmed', event, url).subject).toBe(
+      "It's on: Lake <weekend> (Sat, Jun 1)",
+    );
   });
 
   it('links a cancellation to the events list, without the details', () => {
