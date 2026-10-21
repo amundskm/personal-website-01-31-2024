@@ -14,6 +14,7 @@ import {
   bestOptionIds,
   canInviteGroup,
   canJoin,
+  canHandOff,
   canLeave,
   canManage,
   canSee,
@@ -139,6 +140,49 @@ describe('canManage', () => {
     expect(canManage(event(), 'alice', false)).toBe(true);
     expect(canManage(event(), 'bob', false)).toBe(false);
     expect(canManage(event(), 'bob', true)).toBe(true);
+  });
+
+  it('lets the co-organizer manage it too', () => {
+    expect(canManage(event({ coOrganizer: 'bob' }), 'bob', false)).toBe(true);
+    expect(canManage(event({ coOrganizer: 'bob' }), 'carol', false)).toBe(false);
+  });
+});
+
+describe('co-organizers', () => {
+  const withList = event({ coOrganizer: 'bob', invitees: ['carol'] });
+
+  it('are always invited and can see hidden events', () => {
+    expect(isInvited(withList, 'bob')).toBe(true);
+    expect(canSee({ ...withList, inviteesOnly: true }, 'bob', false)).toBe(true);
+  });
+
+  it("can't leave or join, like the organizer", () => {
+    expect(canLeave({ ...withList, invitees: ['bob', 'carol'] }, 'bob')).toBe(false);
+    expect(canJoin(withList, 'bob')).toBe(false);
+  });
+
+  it('can be handed the event only by the organizer, never take it', () => {
+    expect(canHandOff(withList, 'alice')).toBe(true);
+    expect(canHandOff(withList, 'bob')).toBe(false);
+    expect(canHandOff(withList, 'carol')).toBe(false);
+    expect(canHandOff(event(), 'alice')).toBe(false);
+    expect(canHandOff({ ...withList, status: 'cancelled' }, 'alice')).toBe(false);
+  });
+
+  it('is at most one member id', () => {
+    const valid = {
+      title: 'Lake weekend',
+      details: '',
+      location: null,
+      options: [{ date: '2030-06-01' }],
+      confirmNow: true,
+      reminderOffsets: [],
+      invitees: null,
+      inviteesOnly: false,
+    };
+    expect(validateEventInput({ ...valid, coOrganizer: 'bob' })).toBeNull();
+    expect(validateEventInput({ ...valid, coOrganizer: null })).toBeNull();
+    expect(validateEventInput({ ...valid, coOrganizer: ['bob', 'carol'] })).toMatch(/co-organizer/);
   });
 });
 

@@ -16,6 +16,7 @@ import {
   bestOptionIds,
   canJoin,
   canLeave,
+  canHandOff,
   canManage,
   type EventDetail,
   eventIcs,
@@ -95,6 +96,16 @@ const RSVPS: { value: Rsvp; label: string }[] = [
                   >
                     Cancel event
                   </button>
+                  @if (canHandOff()) {
+                    <button
+                      type="button"
+                      class="btn btn--text"
+                      [disabled]="busy()"
+                      (click)="handOff()"
+                    >
+                      Hand off to {{ nameOf(e.coOrganizer!) }}
+                    </button>
+                  }
                 </div>
               } @else if (manager() && e.status === 'cancelled') {
                 <div class="button-row">
@@ -156,7 +167,12 @@ const RSVPS: { value: Rsvp; label: string }[] = [
                   @if (e.details) {
                     <p class="ev-details">{{ e.details }}</p>
                   }
-                  <p class="ev-meta">Organized by {{ nameOf(e.createdBy) }}</p>
+                  <p class="ev-meta">
+                    Organized by {{ nameOf(e.createdBy) }}
+                    @if (e.coOrganizer) {
+                      with {{ nameOf(e.coOrganizer) }}
+                    }
+                  </p>
                   <p class="ev-meta">
                     {{ inviteSummary() }}
                     @if (leavable()) {
@@ -447,6 +463,12 @@ export class EventPage {
     return !!d && canManage(d.event, d.me.id, d.me.isAdmin);
   });
 
+  /** Only the organizer can hand the event to the co-organizer. */
+  protected readonly canHandOff = computed(() => {
+    const d = this.detail();
+    return !!d && canHandOff(d.event, d.me.id);
+  });
+
   /** Whether I can vote and RSVP (everyone, unless there's an invite list). */
   protected readonly invited = computed(() => {
     const d = this.detail();
@@ -632,6 +654,24 @@ export class EventPage {
       'POST',
       {},
       'Event cancelled. Everyone has been emailed.',
+    );
+  }
+
+  protected handOff(): void {
+    const coOrganizer = this.detail()?.event.coOrganizer;
+    if (!coOrganizer) return;
+    const name = this.nameOf(coOrganizer);
+    if (
+      !confirm(
+        `Hand this event off to ${name}? They become the organizer, and you stay invited but can't edit it anymore.`,
+      )
+    )
+      return;
+    void this.run(
+      `/events/${this.id()}/handoff`,
+      'POST',
+      {},
+      `${name} is the organizer now. They've been emailed.`,
     );
   }
 

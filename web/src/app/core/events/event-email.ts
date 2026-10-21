@@ -45,12 +45,24 @@ const FOOTER = "You're getting this because you're in NEIA Boiz on neiaboiz.com.
 /** Every event email also links to the site's events page. */
 const EVENTS_LINK = { label: 'All NEIA Boiz events:', href: `${SITE_URL}/events` };
 
-/** The email sent to members about an event, in the site's style. */
+/** A role someone was just given on an event, which their email announces. */
+export type EventRole = 'coOrganizer' | 'organizer';
+
+/**
+ * The email sent to members about an event, in the site's style. With a
+ * `role`, a 'poll' or 'confirmed' email instead tells them they were made the
+ * co-organizer, or were handed the event as its organizer.
+ */
 export function eventEmail(
   kind: EmailKind,
   event: GroupEvent,
   url: string,
-  extra: { by?: string; reminderOffset?: number; links?: RecipientLinks } = {},
+  extra: {
+    by?: string;
+    reminderOffset?: number;
+    links?: RecipientLinks;
+    role?: EventRole;
+  } = {},
 ): Email {
   const when = event.confirmed;
   const away = reminderLabel(extra.reminderOffset ?? 0).replace(' before', ' away');
@@ -102,7 +114,28 @@ export function eventEmail(
       button: 'Details & RSVP',
     },
   };
-  const c = copy[kind];
+  const by = extra.by ?? 'Someone';
+  const canDo = `edit or cancel the event${kind === 'poll' ? ', pick the date when voting is done,' : ''} and you'll get the organizer's emails about it`;
+  const roleCopy: Record<EventRole, typeof copy.poll & { footer: string }> = {
+    coOrganizer: {
+      subject: `You're a co-organizer: ${event.title}`,
+      eyebrow: 'Co-organizer',
+      intro: `${by} made you the co-organizer. You can ${canDo}.`,
+      button: kind === 'poll' ? 'See the poll' : 'See the event',
+      footer:
+        "You're getting this because you were made the co-organizer of this event on neiaboiz.com.",
+    },
+    organizer: {
+      subject: `You're the organizer now: ${event.title}`,
+      eyebrow: 'Handed to you',
+      intro: `${by} handed this event to you, so you're the organizer now. You can ${canDo}.`,
+      button: kind === 'poll' ? 'See the poll' : 'See the event',
+      footer: "You're getting this because you were handed this event on neiaboiz.com.",
+    },
+  };
+  const role = kind === 'poll' || kind === 'confirmed' ? extra.role : undefined;
+  const c = role ? roleCopy[role] : copy[kind];
+  const footer = role ? roleCopy[role].footer : FOOTER;
   const buttonUrl = kind === 'cancelled' ? `${SITE_URL}/events` : url;
 
   const details: EmailDetail[] = [];
@@ -132,7 +165,7 @@ export function eventEmail(
     note: note || undefined,
     button: { href: buttonUrl, text: c.button },
     siteLink: EVENTS_LINK,
-    footer: FOOTER,
+    footer,
     footerLinks: footerLinks(extra.links),
   });
 
@@ -151,7 +184,7 @@ export function eventEmail(
     `${c.button}: ${buttonUrl}`,
     `${EVENTS_LINK.label} ${EVENTS_LINK.href}`,
     '',
-    ...footerText(FOOTER, extra.links),
+    ...footerText(footer, extra.links),
   ].join('\n');
 
   return { subject: c.subject, text, html, unsubscribeUrl: extra.links?.unsubscribe };
@@ -181,13 +214,13 @@ export function commentEmail(
       subject: `${author} commented on ${event.title}`,
       eyebrow: 'New comment',
       intro: `${author} commented on your event:`,
-      footer: "You're getting this because you organize this event on neiaboiz.com.",
+      footer: "You're getting this because you organize or co-organize this event on neiaboiz.com.",
     },
     suggestion: {
       subject: `${author} suggested a change to ${event.title}`,
       eyebrow: 'New suggestion',
       intro: `${author} suggested a change to your event:`,
-      footer: "You're getting this because you organize this event on neiaboiz.com.",
+      footer: "You're getting this because you organize or co-organize this event on neiaboiz.com.",
     },
     reply: {
       subject: `${author} replied to your comment on ${event.title}`,
@@ -235,7 +268,8 @@ export function memberJoinedEmail(
   links?: RecipientLinks,
 ): Email {
   const intro = `${name} added themselves to your event. ${invitedCount} people are invited now.`;
-  const footer = "You're getting this because you organize this event on neiaboiz.com.";
+  const footer =
+    "You're getting this because you organize or co-organize this event on neiaboiz.com.";
   const html = renderEmail({
     eyebrow: 'Someone joined',
     heading: event.title,
@@ -301,7 +335,8 @@ export function pollClosedEmail(
     value: `${r.label}: ${r.yes} yes, ${r.maybe} maybe, ${r.no} no`,
   }));
   const note = notVoted.length ? `Didn't vote: ${notVoted.join(', ')}` : undefined;
-  const footer = "You're getting this because you organize this event on neiaboiz.com.";
+  const footer =
+    "You're getting this because you organize or co-organize this event on neiaboiz.com.";
   const html = renderEmail({
     eyebrow: 'Voting closed',
     heading: event.title,
