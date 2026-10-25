@@ -218,11 +218,23 @@ For a sandbox, use `npx ampx sandbox secret set SANITY_PRIVATE_WRITE_TOKEN`.
   - display name and photo; photos sit in a private S3 bucket, served by signed links;
   - email preferences per type, plus "unsubscribe from all".
   - Every email has a signed "Unsubscribe" link that works without logging in (`/unsubscribe`, backed by the API's only unauthenticated route), plus a `List-Unsubscribe` header.
+  - **Text me too:** a checkbox plus a US/Canadian mobile number. Every notification the preferences above would email is also texted, as one short message: `NEIA Boiz: <email subject>`, the link, and "Reply STOP to opt out". The unsubscribe link turns off every preference, so it stops texts too.
 
 **Email setup (once):**
 1. Sending uses the existing `neiaboiz.com` SES identity in us-east-2. It's already verified with DKIM and a custom MAIL FROM domain (`admin.neiaboiz.com`) and isn't managed by this app.
 2. While SES is in its *sandbox*, emails only reach verified addresses. In the SES console (us-east-2), choose **Request production access**, describe it as transactional notifications to a small invite-only group, and submit. Approval usually takes about a day.
 3. Optional: once out of the sandbox, Cognito can send invitations from `@neiaboiz.com` instead of its default sender. Set `senders.email` in `web/amplify/auth/resource.ts`.
+
+**Text message setup (once):** texts go through AWS End User Messaging SMS in us-east-2. Until `SMS_ORIGINATION` is set, the checkbox saves but nothing is sent.
+1. **Get a toll-free number.** In the AWS End User Messaging SMS console (us-east-2), go to **Phone numbers → Request originator**. Choose United States, **Toll-free**, SMS, message type **Transactional**. The number costs about $2 a month.
+2. **Register it.** The console opens a toll-free registration for the number. US carriers block unregistered toll-free texts, and approval can take a few weeks. Fill it in as:
+   - Use case: account notifications for a small, invite-only group.
+   - Opt-in: members sign in to neiaboiz.com, open `/profile`, check "Text me too" and enter their number. The consent text under the checkbox comes from `SMS_CONSENT` in `web/src/app/core/events/profile.ts`. Attach a screenshot of that section.
+   - Sample message: `NEIA Boiz: Reminder: Poker night (Sat, Nov 7)` / `https://neiaboiz.com/events/…` / `Reply STOP to opt out`.
+3. **Leave the sandbox.** New accounts can only text verified numbers. To test before approval, add your own number under **Sandbox → Destination phone numbers**. When the registration is approved, choose **Request production access**.
+4. **Raise the spend limit.** New accounts can only spend $1 a month on texts. Under **Account settings → Spend limits**, request a higher limit (for example $20).
+5. **Set the number.** Put it in E.164 form (`'+18335550123'`) in `SMS_ORIGINATION` in `web/amplify/functions/group-events/resource.ts`, then push to `main`. The Lambda can already send (`sms-voice:SendTextMessage` in `backend.ts`).
+6. **Opt-outs are automatic.** AWS records numbers that reply STOP and stops texting them. A blocked send is only logged, never an error for the user. Optionally, set a HELP reply on the number under **Keywords**, e.g. "NEIA Boiz event alerts. Manage at neiaboiz.com/profile. Reply STOP to opt out."
 
 ## Scripts (repo root)
 

@@ -1,4 +1,13 @@
-import { DEFAULT_PREFS, initials, NO_EMAILS, normalizePrefs, prefFor, wantsEmail } from './profile';
+import {
+  DEFAULT_PREFS,
+  formatPhone,
+  initials,
+  NO_EMAILS,
+  normalizePhone,
+  normalizePrefs,
+  prefFor,
+  wantsEmail,
+} from './profile';
 
 describe('email preferences', () => {
   it('maps each email to its preference', () => {
@@ -31,5 +40,27 @@ describe('initials', () => {
     expect(initials('Mike')).toBe('M');
     expect(initials("mike o'neil")).toBe('MO');
     expect(initials('  ')).toBe('?');
+  });
+});
+
+describe('phone numbers', () => {
+  it('accepts US and Canadian numbers in common formats', () => {
+    expect(normalizePhone('(515) 555-0123')).toBe('+15155550123');
+    expect(normalizePhone('515.555.0123')).toBe('+15155550123');
+    expect(normalizePhone('+1 515 555 0123')).toBe('+15155550123');
+    expect(normalizePhone('15155550123')).toBe('+15155550123');
+  });
+
+  it('rejects anything else', () => {
+    expect(normalizePhone('')).toBeNull();
+    expect(normalizePhone('555-0123')).toBeNull();
+    expect(normalizePhone('+44 20 7946 0958')).toBeNull();
+    // Area codes and exchanges can't start with 0 or 1
+    expect(normalizePhone('015-555-0123')).toBeNull();
+    expect(normalizePhone('515-155-0123')).toBeNull();
+  });
+
+  it('formats a stored number for display', () => {
+    expect(formatPhone('+15155550123')).toBe('(515) 555-0123');
   });
 });

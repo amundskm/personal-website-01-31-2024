@@ -31,3 +31,12 @@
     margin-top: 0.3rem;
   }
 }
+
+.profile-sms {
+  display: grid;
+  gap: var(--space-3);
+
+  .profile-pref {
+    margin-bottom: 0;
+  }
+}

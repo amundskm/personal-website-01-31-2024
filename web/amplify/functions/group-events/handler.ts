@@ -20,6 +20,10 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { SendEmailCommand, SESv2Client } from '@aws-sdk/client-sesv2';
 import {
+  PinpointSMSVoiceV2Client,
+  SendTextMessageCommand,
+} from '@aws-sdk/client-pinpoint-sms-voice-v2';
+import {
   CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
@@ -60,6 +64,7 @@ import {
   AVATAR_MAX_BYTES,
   type EmailPrefs,
   NO_EMAILS,
+  normalizePhone,
   type NotificationKind,
   normalizePrefs,
   wantsEmail,
@@ -122,6 +127,7 @@ const db = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
 });
 const cognito = new CognitoIdentityProviderClient({});
 const ses = new SESv2Client({});
+const sms = new PinpointSMSVoiceV2Client({});
 const s3 = new S3Client({});
 
 type ApiEvent = APIGatewayProxyEventV2WithJWTAuthorizer;
@@ -138,6 +144,10 @@ interface MemberRecord extends Member {
   email: string;
   hasName: boolean;
   prefs: EmailPrefs;
+  /** Also text them what prefs says to email them. */
+  sms: boolean;
+  /** E.164; null if none. */
+  phone: string | null;
   avatarKey: string | null;
 }
 
@@ -163,8 +173,8 @@ interface MemberRecord extends Member {
  *   PUT  /events/{id}/attachments/{aid}         → { kind, name, type } after the upload: attaches it
  *   DELETE /events/{id}/attachments/{aid}       → removes the cover image or a file
  *
- *   GET  /events/profile        → my profile (name, email, photo, email preferences)
- *   PUT  /events/profile        → { name?, prefs? }
+ *   GET  /events/profile        → my profile (name, email, phone, photo, notification preferences)
+ *   PUT  /events/profile        → ProfileInput: { name?, prefs?, sms?, phone? }
  *   PUT  /events/profile/avatar → { image: JPEG data URL }; DELETE removes it
  *   GET  /events/places?q=…     → address suggestions as you type; ?id=… → the picked one
  *   POST /unsubscribe           → { m, t } signed link from an email; no login needed
@@ -666,7 +676,7 @@ async function join(caller: Caller, id: string): Promise<Result> {
   const name = members.find((m) => m.id === caller.id)?.name ?? 'Someone';
   await Promise.all(
     organizersToEmail(event, members, 'joined', caller.id).map(async (organizer) =>
-      sendEmail(
+      sendNotification(
         organizer,
         memberJoinedEmail(
           event,
@@ -948,6 +958,29 @@ async function updateProfile(caller: Caller, body: Record<string, unknown>): Pro
     sets.push('prefs = :prefs');
     values[':prefs'] = normalizePrefs(body['prefs']);
   }
+  let phone: string | null | undefined;
+  if ('phone' in body) {
+    const raw = typeof body['phone'] === 'string' ? body['phone'].trim() : '';
+    phone = raw ? normalizePhone(raw) : null;
+    if (raw && !phone) {
+      return json(400, { message: 'Enter a 10-digit US or Canadian phone number.' });
+    }
+    sets.push('phone = :phone');
+    values[':phone'] = phone;
+  }
+  // Texts need a number: turning them on checks for one, and removing it turns them off
+  const wantsSms = 'sms' in body ? body['sms'] === true : undefined;
+  if (wantsSms) {
+    const current =
+      phone === undefined
+        ? ((await loadMembers(true)).find((m) => m.id === caller.id)?.phone ?? null)
+        : phone;
+    if (!current) return json(400, { message: 'Add your phone number to get texts.' });
+  }
+  if (wantsSms !== undefined || phone === null) {
+    sets.push('sms = :sms');
+    values[':sms'] = phone === null ? false : wantsSms;
+  }
   await db.send(
     new UpdateCommand({
       TableName: TABLE,
@@ -1094,7 +1127,7 @@ async function recipientLinks(memberId: string): Promise<RecipientLinks> {
   };
 }
 
-/** Turns off every event email for the member a signed link was made for. */
+/** Turns off every event email (and so every text) for the member a signed link was made for. */
 async function unsubscribe(body: Record<string, unknown>): Promise<Result> {
   const memberId = typeof body['m'] === 'string' ? body['m'] : '';
   const token = typeof body['t'] === 'string' ? body['t'] : '';
@@ -1167,7 +1200,7 @@ async function addComment(
     const url = `${env.SITE_URL}/events/${eventId}#comment-${comment.id}`;
     await Promise.all(
       recipients.map(async (recipient) =>
-        sendEmail(
+        sendNotification(
           recipient,
           commentEmail(kind, event, comment, author, url, await recipientLinks(recipient.id)),
           `comment:${kind}`,
@@ -1347,7 +1380,7 @@ async function notifyPollClosed(event: GroupEvent): Promise<void> {
         `${env.SITE_URL}/events/${event.id}`,
         await recipientLinks(organizer.id),
       );
-      await sendEmail(organizer, email, 'pollClosed');
+      await sendNotification(organizer, email, 'pollClosed');
     }),
   );
 }
@@ -1400,7 +1433,7 @@ async function notify(
         reminderOffset,
         links: await recipientLinks(member.id),
       });
-      await sendEmail(member, email, kind);
+      await sendNotification(member, email, kind);
     }),
   );
 }
@@ -1421,7 +1454,7 @@ async function notifyRole(event: GroupEvent, actor: Caller, memberId: string, ro
       links: await recipientLinks(member.id),
     },
   );
-  await sendEmail(member, email, role);
+  await sendNotification(member, email, role);
 }
 
 /**
@@ -1437,6 +1470,31 @@ async function postToDiscord(event: GroupEvent, caller: Caller): Promise<void> {
     env.DISCORD_WEBHOOK_URL,
     discordMessage(event, by, `${env.SITE_URL}/events/${event.id}`),
   );
+}
+
+/** Emails one member, and texts them too if they turned texts on. */
+async function sendNotification(member: MemberRecord, email: Email, label: string): Promise<void> {
+  await Promise.all([sendEmail(member, email, label), sendText(member, email.sms, label)]);
+}
+
+/**
+ * Texts one member from the toll-free number in SMS_ORIGINATION (skipped while
+ * it's unset). A failure, e.g. a number that replied STOP, is logged, not fatal.
+ */
+async function sendText(member: MemberRecord, body: string, label: string): Promise<void> {
+  if (!member.sms || !member.phone || !env.SMS_ORIGINATION) return;
+  try {
+    await sms.send(
+      new SendTextMessageCommand({
+        DestinationPhoneNumber: member.phone,
+        OriginationIdentity: env.SMS_ORIGINATION,
+        MessageBody: body,
+        MessageType: 'TRANSACTIONAL',
+      }),
+    );
+  } catch (error) {
+    console.warn(`Could not text member ${member.id} (${label}):`, String(error));
+  }
 }
 
 /** Sends one email to one member. A failure is logged, not fatal. */
@@ -1594,6 +1652,8 @@ async function loadMembers(fresh = false): Promise<MemberRecord[]> {
       name: name ?? email.split('@')[0],
       hasName: !!name,
       prefs: normalizePrefs(profile?.['prefs']),
+      sms: profile?.['sms'] === true,
+      phone: typeof profile?.['phone'] === 'string' ? profile['phone'] : null,
       avatarKey: typeof profile?.['avatarKey'] === 'string' ? profile['avatarKey'] : null,
       groups: groupsOf.get(id) ?? [],
     });
@@ -1651,6 +1711,8 @@ async function me(caller: Caller, members: MemberRecord[]) {
     groups: caller.groups.filter((g) => INVITE_GROUPS.some((ig) => ig.id === g)),
     email: record?.email ?? '',
     prefs: record?.prefs ?? normalizePrefs(null),
+    sms: record?.sms ?? false,
+    phone: record?.phone ?? null,
     avatarUrl: await avatarUrl(record?.avatarKey ?? null),
   };
 }

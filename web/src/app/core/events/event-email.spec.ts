@@ -1,5 +1,11 @@
 import { displayUrl, renderEmail } from '../../../../amplify/shared/email-layout';
-import { commentEmail, eventEmail, memberJoinedEmail, pollClosedEmail } from './event-email';
+import {
+  commentEmail,
+  eventEmail,
+  memberJoinedEmail,
+  pollClosedEmail,
+  smsText,
+} from './event-email';
 import type { GroupEvent } from './events';
 
 // Made-up event only: the repository is public.
@@ -207,5 +213,21 @@ describe('memberJoinedEmail', () => {
     expect(email.subject).toBe('Carol joined Lake <weekend>');
     expect(email.text).toContain('Carol added themselves to your event. 4 people are invited now.');
     expect(email.text).toContain('See the event: https://neiaboiz.com/events/evt1');
+  });
+});
+
+describe('text messages', () => {
+  it('sends the subject and link, with the sender and how to opt out', () => {
+    expect(eventEmail('reminder', event, url, { reminderOffset: 10080 }).sms).toBe(
+      `NEIA Boiz: Reminder: Lake <weekend> (Sat, Jun 1)\n${url}\nReply STOP to opt out`,
+    );
+  });
+
+  it('links a cancellation to the events page, like its email button', () => {
+    expect(eventEmail('cancelled', event, url).sms).toContain('https://neiaboiz.com/events\n');
+  });
+
+  it('swaps characters that would make a text twice as long', () => {
+    expect(smsText('Mike’s trip – June…', url)).toMatch(/^NEIA Boiz: Mike's trip - June\.\.\.\n/);
   });
 });

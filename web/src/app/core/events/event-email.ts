@@ -20,8 +20,28 @@ export interface Email {
   subject: string;
   text: string;
   html: string;
+  /** The same notification as a text message, for members who turned texts on. */
+  sms: string;
   /** One-click unsubscribe URL for the List-Unsubscribe header. */
   unsubscribeUrl?: string;
+}
+
+/** Characters outside the GSM 7-bit set (which would halve a text's length) and plain stand-ins. */
+const SMS_ASCII: [RegExp, string][] = [
+  [/[–—]/g, '-'],
+  [/·/g, '-'],
+  [/[‘’]/g, "'"],
+  [/[“”]/g, '"'],
+  [/…/g, '...'],
+];
+
+/**
+ * A short text: "NEIA Boiz: <subject>", the link, and how to opt out. Carriers
+ * want the sender's name and the STOP wording in the message.
+ */
+export function smsText(subject: string, url: string): string {
+  const plain = SMS_ASCII.reduce((s, [from, to]) => s.replace(from, to), subject);
+  return `NEIA Boiz: ${plain}\n${url}\nReply STOP to opt out`;
 }
 
 /** Per-recipient links in the footer of every event email. */
@@ -198,7 +218,13 @@ export function eventEmail(
     ...footerText(footer, extra.links),
   ].join('\n');
 
-  return { subject: c.subject, text, html, unsubscribeUrl: extra.links?.unsubscribe };
+  return {
+    subject: c.subject,
+    text,
+    html,
+    sms: smsText(c.subject, buttonUrl),
+    unsubscribeUrl: extra.links?.unsubscribe,
+  };
 }
 
 const shortDate = (when: EventDate) => shortDateLabel(when);
@@ -267,7 +293,13 @@ export function commentEmail(
     '',
     ...footerText(c.footer, links),
   ].join('\n');
-  return { subject: c.subject, text, html, unsubscribeUrl: links?.unsubscribe };
+  return {
+    subject: c.subject,
+    text,
+    html,
+    sms: smsText(c.subject, url),
+    unsubscribeUrl: links?.unsubscribe,
+  };
 }
 
 /** Tells the organizer that someone added themselves to their event. */
@@ -308,6 +340,7 @@ export function memberJoinedEmail(
     subject: `${name} joined ${event.title}`,
     text,
     html,
+    sms: smsText(`${name} joined ${event.title}`, url),
     unsubscribeUrl: links?.unsubscribe,
   };
 }
@@ -380,6 +413,7 @@ export function pollClosedEmail(
     subject: `Voting closed: ${event.title}`,
     text,
     html,
+    sms: smsText(`Voting closed: ${event.title}`, url),
     unsubscribeUrl: links?.unsubscribe,
   };
 }

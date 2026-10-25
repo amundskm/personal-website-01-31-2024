@@ -16,8 +16,12 @@ import {
   AVATAR_SIZE,
   DEFAULT_PREFS,
   type EmailPrefs,
+  formatPhone,
   NO_EMAILS,
+  normalizePhone,
   PREF_LABELS,
+  type ProfileInput,
+  SMS_CONSENT,
 } from '../../core/events/profile';
 import { MyProfileService } from '../../core/events/my-profile.service';
 import { SeoService } from '../../core/seo.service';
@@ -27,7 +31,7 @@ import { MemberAvatar } from '../../shared/member-avatar/member-avatar';
 /** Google Calendar's "Add calendar > From URL" page. */
 const GOOGLE_ADD_BY_URL = 'https://calendar.google.com/calendar/u/0/r/settings/addbyurl';
 
-/** Your name, photo and which event emails you get. */
+/** Your name, photo and which event emails (and texts) you get. */
 @Component({
   selector: 'app-profile-page',
   imports: [RouterLink, MemberAvatar, LoadingComponent, LoadErrorComponent],
@@ -133,8 +137,11 @@ const GOOGLE_ADD_BY_URL = 'https://calendar.google.com/calendar/u/0/r/settings/a
           </article>
 
           <article class="ev-card profile-card">
-            <h2>Email notifications</h2>
+            <h2>Notifications</h2>
             <form class="ev-form" (submit)="savePrefs($event)">
+              <p class="ev-meta">
+                What you'll hear about. It's all emailed, and can be texted too.
+              </p>
               @for (pref of prefLabels; track pref.key) {
                 <label class="ev-check profile-pref">
                   <input
@@ -148,6 +155,42 @@ const GOOGLE_ADD_BY_URL = 'https://calendar.google.com/calendar/u/0/r/settings/a
                   </span>
                 </label>
               }
+              <fieldset class="ev-fieldset profile-sms">
+                <legend>Text messages</legend>
+                <label class="ev-check profile-pref">
+                  <input
+                    type="checkbox"
+                    [checked]="sms()"
+                    (change)="sms.set($any($event.target).checked)"
+                  />
+                  <span>
+                    <strong>Text me too</strong>
+                    <span class="ev-meta">{{ smsConsent }}</span>
+                  </span>
+                </label>
+                @if (sms() || phone()) {
+                  <label class="ev-field">
+                    <span>Mobile number</span>
+                    <input
+                      type="tel"
+                      inputmode="tel"
+                      autocomplete="tel-national"
+                      placeholder="(515) 555-0123"
+                      [value]="phone()"
+                      (input)="phone.set($any($event.target).value)"
+                      [required]="sms()"
+                      [attr.aria-invalid]="phoneInvalid() || null"
+                    />
+                    <small>
+                      @if (phoneInvalid()) {
+                        Enter a 10-digit US or Canadian number.
+                      } @else {
+                        Only used for these texts. Nobody else sees it.
+                      }
+                    </small>
+                  </label>
+                }
+              </fieldset>
               <div class="button-row">
                 <button
                   type="submit"
@@ -178,7 +221,7 @@ const GOOGLE_ADD_BY_URL = 'https://calendar.google.com/calendar/u/0/r/settings/a
               </div>
               @if (allOff()) {
                 <p class="ev-meta">
-                  You won't get any event emails. You can still see everything on the site.
+                  You won't get any event emails or texts. You can still see everything on the site.
                 </p>
               }
             </form>
@@ -205,9 +248,17 @@ export class ProfilePage implements OnInit {
   protected readonly prefLabels = PREF_LABELS;
   protected readonly defaults = DEFAULT_PREFS;
   protected readonly none = NO_EMAILS;
+  protected readonly smsConsent = SMS_CONSENT;
 
   protected readonly name = signal('');
   protected readonly prefs = signal<EmailPrefs>(DEFAULT_PREFS);
+  protected readonly sms = signal(false);
+  /** As typed; normalized to E.164 when saved. */
+  protected readonly phone = signal('');
+  private readonly phoneE164 = computed(() =>
+    this.phone().trim() ? normalizePhone(this.phone()) : null,
+  );
+  protected readonly phoneInvalid = computed(() => !!this.phone().trim() && !this.phoneE164());
   protected readonly busy = signal(false);
   protected readonly message = signal<{ text: string; error: boolean } | null>(null);
 
@@ -216,9 +267,16 @@ export class ProfilePage implements OnInit {
     const saved = this.saved();
     return !!this.name().trim() && (!saved?.hasName || this.name().trim() !== saved.name);
   });
-  protected readonly prefsChanged = computed(
-    () => JSON.stringify(this.prefs()) !== JSON.stringify(this.saved()?.prefs),
-  );
+  protected readonly prefsChanged = computed(() => {
+    const saved = this.saved();
+    return (
+      JSON.stringify(this.prefs()) !== JSON.stringify(saved?.prefs) ||
+      this.sms() !== saved?.sms ||
+      // An invalid number counts as a change, so saving can say what's wrong
+      this.phoneInvalid() ||
+      this.phoneE164() !== saved?.phone
+    );
+  });
   protected readonly allOff = computed(() => Object.values(this.prefs()).every((on) => !on));
 
   /** This member's private calendar subscription, in the forms each app wants. */
@@ -259,6 +317,8 @@ export class ProfilePage implements OnInit {
       if (!p) return;
       this.name.set(p.hasName ? p.name : '');
       this.prefs.set(p.prefs);
+      this.sms.set(p.sms);
+      this.phone.set(p.phone ? formatPhone(p.phone) : '');
     });
   }
 
@@ -280,7 +340,21 @@ export class ProfilePage implements OnInit {
 
   protected savePrefs(event: SubmitEvent): void {
     event.preventDefault();
-    void this.save('PUT', '/events/profile', { prefs: this.prefs() }, 'Email preferences saved.');
+    if (this.phoneInvalid() || (this.sms() && !this.phoneE164())) {
+      this.message.set({
+        text: this.phoneInvalid()
+          ? 'Enter a 10-digit US or Canadian phone number.'
+          : 'Add your phone number to get texts.',
+        error: true,
+      });
+      return;
+    }
+    const body: ProfileInput = {
+      prefs: this.prefs(),
+      sms: this.sms(),
+      phone: this.phoneE164() ?? '',
+    };
+    void this.save('PUT', '/events/profile', body, 'Notification preferences saved.');
   }
 
   protected removePhoto(): void {

@@ -162,6 +162,13 @@ eventsLambda.addToRolePolicy(
     conditions: { StringEquals: { 'ses:FromAddress': EVENTS_FROM_ADDRESS } },
   }),
 );
+// Text notifications, from the toll-free number in SMS_ORIGINATION (AWS End User Messaging SMS)
+eventsLambda.addToRolePolicy(
+  new PolicyStatement({
+    actions: ['sms-voice:SendTextMessage'],
+    resources: ['*'],
+  }),
+);
 // Address search on the event form (Amazon Location Service Places v2: no resource to create)
 eventsLambda.addToRolePolicy(
   new PolicyStatement({

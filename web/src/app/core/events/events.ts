@@ -177,6 +177,10 @@ export interface MeInfo extends Member {
 export interface ProfileInfo extends MeInfo {
   email: string;
   prefs: EmailPrefs;
+  /** Whether the notifications in prefs are also texted to phone. */
+  sms: boolean;
+  /** E.164, e.g. +15155550123; null if none. */
+  phone: string | null;
   /** Signs this member's calendar subscription URL. */
   calendarToken: string;
 }

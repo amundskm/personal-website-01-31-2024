@@ -113,7 +113,31 @@ export const wantsEmail = (prefs: EmailPrefs, kind: NotificationKind) => prefs[p
 export interface ProfileInput {
   name?: string;
   prefs?: EmailPrefs;
+  /** Also text the notifications chosen in prefs; needs a phone number. */
+  sms?: boolean;
+  /** A US or Canadian number in any common format; '' removes it. */
+  phone?: string;
 }
+
+/**
+ * A US or Canadian phone number in E.164 form (+15155550123), or null if it
+ * isn't one. Accepts "(515) 555-0123", "515.555.0123", "+1 515 555 0123", ….
+ */
+export function normalizePhone(value: string): string | null {
+  const digits = value.replace(/[^\d+]/g, '');
+  const match = /^(?:\+?1)?([2-9]\d{2}[2-9]\d{6})$/.exec(digits);
+  return match ? `+1${match[1]}` : null;
+}
+
+/** +15155550123 → "(515) 555-0123". */
+export function formatPhone(e164: string): string {
+  const m = /^\+1(\d{3})(\d{3})(\d{4})$/.exec(e164);
+  return m ? `(${m[1]}) ${m[2]}-${m[3]}` : e164;
+}
+
+/** Shown under the texting checkbox: the opt-in wording carriers expect before texting someone. */
+export const SMS_CONSENT =
+  'NEIA Boiz will text you the notifications checked above. Message and data rates may apply. Reply STOP to stop or HELP for help.';
 
 /** Profile photos: uploaded as a small square JPEG data URL. */
 export const AVATAR_SIZE = 256;
