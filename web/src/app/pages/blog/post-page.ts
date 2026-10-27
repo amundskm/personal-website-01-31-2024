@@ -1,61 +1,19 @@
-import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, effect, inject, input } from '@angular/core';
-import { RouterLink } from '@angular/router';
 import { contentResource, segment } from '../../core/content-api';
 import type { Post } from '../../core/models';
 import { SeoService } from '../../core/seo.service';
-import { PortableTextComponent } from '../../shared/portable-text/portable-text';
-import { CmsImageComponent } from '../../shared/cms-image/cms-image';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
 import { NotFound } from '../not-found/not-found';
+import { PostArticle } from './post-article';
 
 @Component({
   selector: 'app-post-page',
-  imports: [
-    DatePipe,
-    RouterLink,
-    PortableTextComponent,
-    CmsImageComponent,
-    NotFound,
-    LoadingComponent,
-    LoadErrorComponent,
-  ],
+  imports: [PostArticle, NotFound, LoadingComponent, LoadErrorComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (post.hasValue()) {
       @if (post.value(); as p) {
-        <article class="section">
-          <header class="container container--narrow article-header">
-            <a routerLink="/blog" class="back-link">← All posts</a>
-            <h1>{{ p.title }}</h1>
-            <div class="article-meta">
-              @if (p.publishedAt) {
-                <time [attr.datetime]="p.publishedAt">{{ p.publishedAt | date: 'longDate' }}</time>
-              }
-              @if (p.tags?.length) {
-                <ul class="tags" aria-label="Tags">
-                  @for (tag of p.tags; track tag) {
-                    <li class="tag">{{ tag }}</li>
-                  }
-                </ul>
-              }
-            </div>
-          </header>
-          @if (p.coverImage?.asset) {
-            <div class="container article-cover">
-              <app-cms-image
-                [image]="p.coverImage"
-                [width]="1200"
-                [aspectRatio]="2"
-                [priority]="true"
-                sizes="(min-width: 80rem) 1200px, 100vw"
-              />
-            </div>
-          }
-          <div class="container container--narrow">
-            <app-portable-text [value]="p.body" />
-          </div>
-        </article>
+        <app-post-article [post]="p" />
       } @else {
         <app-not-found />
       }

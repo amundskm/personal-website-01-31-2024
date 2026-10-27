@@ -32,9 +32,21 @@ To load content, import a Sanity export or the sample content into the API (`api
 
 ## Editing content
 
-The site no longer reads Sanity: content lives in the content API's database. Until the admin
-pages are built, content is still edited in Sanity Studio and copied over with the importer
-(`bin/rails "sanity:import[…]"`, see `api/README.md`). Re-import after editing.
+Content lives in the content API's database and is edited at **`/admin`** (admins only: "Edit site"
+in the account menu).
+
+- **Pages, posts, projects and members pages** are edited in forms with a live preview
+  ("Show preview") rendered by the site's own components. Rich text uses a word-processor style
+  editor; images are uploaded or picked from the library, with alt text and a focal point
+  (click the image) that crops keep in view.
+- **Saving keeps a draft** only the admin sees. New documents stay hidden and deletions wait.
+  **Publish** (`/admin`) makes every draft live and rebuilds the site through the branch's
+  Amplify webhook (`AMPLIFY_WEBHOOK_URL` on the content API).
+- **Site settings** are drafted and published the same way. The **spending plan** saves
+  immediately: it isn't public and needs no rebuild.
+
+Sanity Studio is no longer needed for editing. Existing content was copied over with the
+importer (`bin/rails "sanity:import[…]"`, see `api/README.md`).
 
 ## How pages are built
 

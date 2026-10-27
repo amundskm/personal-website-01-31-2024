@@ -119,4 +119,46 @@ describe('EditorPage', () => {
     expect(el.textContent).not.toContain('Publish');
     fixture.destroy();
   });
+
+  it('previews unsaved edits with the site components, after typing pauses', async () => {
+    const preview = {
+      _id: 'post-1',
+      title: 'Previewed title',
+      slug: 'hello',
+      excerpt: null,
+      publishedAt: null,
+      tags: ['meta'],
+      coverImage: null,
+      body: [{ _type: 'block', _key: 'b', style: 'normal', markDefs: [], children: [{ _type: 'span', text: 'See ', marks: [] }] }],
+      seo: null,
+    };
+    const { fixture, el, calls } = await render({ collection: 'posts', id: 'post-1' }, (call) =>
+      call.path.endsWith('/preview') ? { ...preview, title: (call.body as { document: { title: string } }).document.title } : post,
+    );
+    [...el.querySelectorAll('button')].find((b) => b.textContent!.includes('Show preview'))!.click();
+    fixture.detectChanges();
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const previews = () => calls.filter((c) => c.path === '/admin/posts/post-1/preview');
+    expect(previews().length).toBe(1);
+    expect(el.querySelector('.adm-preview app-post-article h1')!.textContent).toBe('Hello');
+
+    titleInput(el).value = 'Edited';
+    titleInput(el).dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(previews().length).toBe(2);
+    expect((previews()[1].body as { document: { title: string } }).document.title).toBe('Edited');
+    expect(el.querySelector('.adm-preview app-post-article h1')!.textContent).toBe('Edited');
+
+    // Links in the preview don't navigate away from the editor
+    const link = el.querySelector<HTMLAnchorElement>('.adm-preview a')!;
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
 });

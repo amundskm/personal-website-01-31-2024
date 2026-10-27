@@ -6,17 +6,26 @@ import {
   HostListener,
   inject,
   input,
+  resource,
   signal,
   untracked,
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { ApiError } from '../../core/auth/auth.service';
+import type { Page, Post, Project, SiteSettings } from '../../core/models';
 import { AdminApi, type DocumentStatus, type EditableDocument } from '../admin-api';
 import { EditorContext } from '../editor-context';
 import { AdminField } from '../fields/admin-field';
 import { type Field, type JsonObject, newObject, withField } from '../schema';
 import { type Collection, DOCUMENTS, SETTINGS_FIELDS, SPENDING_PLAN_FIELDS } from '../schemas';
+import { type PreviewKind, PreviewPane } from './preview-pane';
 import { StatusBadge } from './status-badge';
+
+/** How long typing must pause before the preview refreshes. */
+const PREVIEW_DELAY_MS = 400;
+
+/** What the preview renders: the document as the site would get it. */
+type PreviewData = Page | Post | Project | SiteSettings;
 
 /** What the editor edits, from the route's data. */
 export type EditorMode = 'document' | 'settings' | 'spending-plan';
@@ -28,7 +37,7 @@ export type EditorMode = 'document' | 'settings' | 'spending-plan';
  */
 @Component({
   selector: 'app-editor-page',
-  imports: [RouterLink, AdminField, StatusBadge],
+  imports: [RouterLink, AdminField, PreviewPane, StatusBadge],
   providers: [EditorContext],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -42,45 +51,91 @@ export type EditorMode = 'document' | 'settings' | 'spending-plan';
           <app-status-badge [status]="s" />
         }
       </div>
-      @if (sitePath(); as path) {
-        <a [href]="path" target="_blank" rel="noopener" class="btn btn--text">View on site ↗</a>
-      }
+      <div class="button-row">
+        @if (previewKind()) {
+          <button
+            type="button"
+            class="btn btn--secondary adm-btn-sm"
+            [attr.aria-pressed]="previewOpen()"
+            (click)="previewOpen.set(!previewOpen())"
+          >
+            {{ previewOpen() ? 'Hide preview' : 'Show preview' }}
+          </button>
+        }
+        @if (sitePath(); as path) {
+          <a [href]="path" target="_blank" rel="noopener" class="btn btn--text">View on site ↗</a>
+        }
+      </div>
     </header>
 
     @if (loadError(); as message) {
       <p class="adm-error" role="alert">{{ message }}</p>
     } @else if (doc(); as document) {
-      <form class="adm-form" (submit)="$event.preventDefault(); save()">
-        @for (field of visibleFields(); track field.name) {
-          <app-admin-field [field]="field" [value]="document[field.name]" [parent]="document"
-            (valueChange)="set(field.name, $event)" />
-        }
+      <div class="adm-editor" [class.adm-editor--preview]="previewOpen()">
+        <form class="adm-form" (submit)="$event.preventDefault(); save()">
+          @for (field of visibleFields(); track field.name) {
+            <app-admin-field
+              [field]="field"
+              [value]="document[field.name]"
+              [parent]="document"
+              (valueChange)="set(field.name, $event)"
+            />
+          }
 
-        <div class="adm-toolbar">
-          @if (error(); as message) {
-            <p class="adm-error" role="alert">{{ message }}</p>
-          }
-          @if (notice(); as message) {
-            <p class="adm-notice" role="status">{{ message }}</p>
-          }
-          <div class="button-row">
-            <button type="submit" class="btn btn--primary" [disabled]="saving() || !dirty()">
-              {{ saving() ? 'Saving…' : mode() === 'spending-plan' ? 'Save' : 'Save draft' }}
-            </button>
-            @if (status() === 'changed' || status() === 'deleted') {
-              <button type="button" class="btn btn--secondary" (click)="discard()" [disabled]="saving()">
-                {{ status() === 'deleted' ? 'Keep it (undo delete)' : 'Discard draft' }}
-              </button>
+          <div class="adm-toolbar">
+            @if (error(); as message) {
+              <p class="adm-error" role="alert">{{ message }}</p>
             }
-            @if (mode() === 'document' && id() !== 'new' && status() !== 'deleted') {
-              <button type="button" class="btn btn--text adm-danger" (click)="remove()" [disabled]="saving()">Delete</button>
+            @if (notice(); as message) {
+              <p class="adm-notice" role="status">{{ message }}</p>
+            }
+            <div class="button-row">
+              <button type="submit" class="btn btn--primary" [disabled]="saving() || !dirty()">
+                {{ saving() ? 'Saving…' : mode() === 'spending-plan' ? 'Save' : 'Save draft' }}
+              </button>
+              @if (status() === 'changed' || status() === 'deleted') {
+                <button
+                  type="button"
+                  class="btn btn--secondary"
+                  (click)="discard()"
+                  [disabled]="saving()"
+                >
+                  {{ status() === 'deleted' ? 'Keep it (undo delete)' : 'Discard draft' }}
+                </button>
+              }
+              @if (mode() === 'document' && id() !== 'new' && status() !== 'deleted') {
+                <button
+                  type="button"
+                  class="btn btn--text adm-danger"
+                  (click)="remove()"
+                  [disabled]="saving()"
+                >
+                  Delete
+                </button>
+              }
+            </div>
+            @if (mode() !== 'spending-plan') {
+              <small class="adm-help"
+                >Drafts are only visible here. <a routerLink="/admin">Publish</a> to put them on the
+                site.</small
+              >
             }
           </div>
-          @if (mode() !== 'spending-plan') {
-            <small class="adm-help">Drafts are only visible here. <a routerLink="/admin">Publish</a> to put them on the site.</small>
-          }
-        </div>
-      </form>
+        </form>
+        @if (previewOpen()) {
+          <section class="adm-preview" aria-label="Preview">
+            <p class="adm-preview__label">
+              Preview{{ preview.isLoading() ? ' · updating…' : '' }}
+              @if (preview.error()) {
+                <span class="adm-error"> · could not be rendered</span>
+              }
+            </p>
+            @if (lastPreview(); as data) {
+              <app-preview-pane [kind]="previewKind()!" [data]="data" />
+            }
+          </section>
+        }
+      </div>
     } @else {
       <p class="status">Loading…</p>
     }
@@ -97,7 +152,9 @@ export class EditorPage {
   /** From the route; "new" for a new document. */
   readonly id = input<string>();
 
-  protected readonly schema = computed(() => (this.mode() === 'document' ? DOCUMENTS[this.collection()] : null));
+  protected readonly schema = computed(() =>
+    this.mode() === 'document' ? DOCUMENTS[this.collection()] : null,
+  );
 
   private readonly fields = computed<Field[]>(() => {
     switch (this.mode()) {
@@ -120,6 +177,24 @@ export class EditorPage {
   protected readonly loadError = signal<string | null>(null);
 
   readonly dirty = computed(() => !!this.doc() && JSON.stringify(this.doc()) !== this.saved());
+
+  protected readonly previewKind = computed<PreviewKind | null>(() =>
+    this.mode() === 'document' ? this.collection() : this.mode() === 'settings' ? 'settings' : null,
+  );
+  protected readonly previewOpen = signal(false);
+  /** The document as of the last pause in typing. */
+  private readonly previewDoc = signal<JsonObject | null>(null);
+
+  protected readonly preview = resource({
+    params: () => (this.previewOpen() ? (this.previewDoc() ?? undefined) : undefined),
+    loader: ({ params: document }) => {
+      if (this.mode() === 'settings') return this.api.previewSettings<PreviewData>(document);
+      const id = this.id() === 'new' ? undefined : this.id();
+      return this.api.preview<PreviewData>(this.collection(), id, document);
+    },
+  });
+  /** Kept while the next preview loads, so it doesn't flicker. */
+  protected readonly lastPreview = signal<PreviewData | null>(null);
 
   protected readonly visibleFields = computed(() => {
     const doc = this.doc() ?? {};
@@ -146,6 +221,17 @@ export class EditorPage {
   );
 
   constructor() {
+    // Refresh the preview once typing pauses
+    effect((onCleanup) => {
+      const doc = this.doc();
+      if (!this.previewOpen() || !doc) return;
+      const timer = setTimeout(() => this.previewDoc.set(doc), PREVIEW_DELAY_MS);
+      onCleanup(() => clearTimeout(timer));
+    });
+    effect(() => {
+      if (this.preview.hasValue()) this.lastPreview.set(this.preview.value());
+    });
+
     // (Re)load whenever the route changes
     effect(() => {
       const mode = this.mode();
@@ -165,8 +251,13 @@ export class EditorPage {
     this.notice.set(null);
   }
 
-  private async load(mode: EditorMode, collection: Collection, id: string | undefined): Promise<void> {
+  private async load(
+    mode: EditorMode,
+    collection: Collection,
+    id: string | undefined,
+  ): Promise<void> {
     this.doc.set(null);
+    this.lastPreview.set(null);
     this.loadError.set(null);
     this.error.set(null);
     try {
@@ -212,7 +303,9 @@ export class EditorPage {
           if (this.id() === 'new') {
             const created = await this.api.create(this.collection(), doc);
             this.apply(created);
-            await this.router.navigate(['/admin', this.collection(), created.id], { replaceUrl: true });
+            await this.router.navigate(['/admin', this.collection(), created.id], {
+              replaceUrl: true,
+            });
             return;
           }
           this.apply(await this.api.save(this.collection(), this.id()!, doc));
@@ -234,7 +327,8 @@ export class EditorPage {
 
   protected async remove(): Promise<void> {
     const live = this.status() !== 'new';
-    if (!confirm(live ? 'Delete this when you next publish?' : 'Delete this draft for good?')) return;
+    if (!confirm(live ? 'Delete this when you next publish?' : 'Delete this draft for good?'))
+      return;
     await this.run(async () => {
       const pending = await this.api.remove(this.collection(), this.id()!);
       this.saved.set(JSON.stringify(this.doc()));
@@ -250,7 +344,11 @@ export class EditorPage {
     try {
       await action();
     } catch (error) {
-      this.error.set(error instanceof ApiError || error instanceof Error ? error.message : 'Something went wrong.');
+      this.error.set(
+        error instanceof ApiError || error instanceof Error
+          ? error.message
+          : 'Something went wrong.',
+      );
     } finally {
       this.saving.set(false);
     }

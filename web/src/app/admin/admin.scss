@@ -5,6 +5,8 @@
 
 .admin {
   display: grid;
+  // Wider than the site's pages: the editor and its preview sit side by side
+  max-width: 110rem;
   gap: var(--space-6);
   padding-block: var(--space-8);
 
@@ -70,6 +72,48 @@
 
   h1 {
     margin-bottom: var(--space-2);
+  }
+}
+
+// Editor and preview
+
+.adm-editor {
+  display: grid;
+  gap: var(--space-6);
+
+  &--preview {
+    @include from(xl) {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      align-items: start;
+    }
+  }
+}
+
+.adm-preview {
+  min-width: 0;
+  overflow: hidden;
+  background: var(--color-bg);
+  border: var(--stitch-faint);
+  border-radius: var(--radius-lg);
+
+  @include from(xl) {
+    position: sticky;
+    top: var(--space-4);
+    max-height: calc(100vh - var(--space-8));
+    overflow-y: auto;
+  }
+
+  &__label {
+    margin: 0;
+    padding: var(--space-2) var(--space-4);
+    font-size: var(--text-sm);
+    color: var(--color-muted);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  &__filler {
+    padding-block: var(--space-12);
+    color: var(--color-muted);
   }
 }
 
