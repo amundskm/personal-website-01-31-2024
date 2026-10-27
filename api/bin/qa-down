@@ -1,0 +1,21 @@
+#!/bin/bash
+# Deletes the QA content API box and its DNS record (bin/qa-up recreates them).
+# The QA site and its images bucket stay; the site can't rebuild until QA is up.
+set -euo pipefail
+
+REGION=us-east-2
+NAME=content-api-qa
+HOST=qa-api.neiaboiz.com
+ZONE_ID=Z057981539I3P54Q5JA3G
+aws() { command aws --region "$REGION" "$@"; }
+
+if aws lightsail get-instance --instance-name "$NAME" >/dev/null 2>&1; then
+  ip=$(aws lightsail get-instance --instance-name "$NAME" --query instance.publicIpAddress --output text)
+  aws route53 change-resource-record-sets --hosted-zone-id "$ZONE_ID" --change-batch \
+    "{\"Changes\":[{\"Action\":\"DELETE\",\"ResourceRecordSet\":{\"Name\":\"$HOST\",\"Type\":\"A\",\"TTL\":60,\"ResourceRecords\":[{\"Value\":\"$ip\"}]}}]}" \
+    >/dev/null 2>&1 || true
+  aws lightsail delete-instance --instance-name "$NAME" --force-delete-add-ons >/dev/null
+  echo "Deleted the QA box ($ip) and $HOST."
+else
+  echo "There is no QA box."
+fi

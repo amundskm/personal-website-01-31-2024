@@ -1,0 +1,63 @@
+# Kamal deploy config, shared by both destinations (bin/kamal runs Kamal in Docker):
+#
+#   bin/kamal deploy -d production    # api.neiaboiz.com, the Lightsail box
+#   bin/kamal deploy -d qa            # qa-api.neiaboiz.com, a temporary box (bin/qa-up)
+#
+# Each destination's file (deploy.<destination>.yml) adds its host and
+# settings; its secrets are in .kamal/secrets.<destination> (git-ignored).
+service: content-api
+image: content-api
+
+# Images are pushed straight to the box through an SSH tunnel: no registry account
+registry:
+  server: localhost:5555
+
+builder:
+  arch: amd64
+  # Build from api/ (this is a monorepo); .dockerignore keeps secrets and exports out
+  context: .
+
+ssh:
+  user: ubuntu
+  # Mounted by bin/kamal
+  keys: [ /root/.ssh/deploy_key ]
+
+# kamal-proxy gets a Let's Encrypt certificate for the host and forwards to Thruster
+proxy:
+  ssl: true
+  app_port: 80
+  healthcheck:
+    path: /up
+
+env:
+  clear:
+    RAILS_ENV: production
+    # One Puma process on a 1 GB box
+    RAILS_MAX_THREADS: 3
+    DB_HOST: content-api-db
+    DB_USER: api
+    DB_NAME: content_api
+    AWS_REGION: us-east-2
+    BACKUP_BUCKET: neiaboiz-site-backups
+  secret:
+    - SECRET_KEY_BASE
+    - DB_PASSWORD
+    - SERVICE_TOKEN
+    - AWS_ACCESS_KEY_ID
+    - AWS_SECRET_ACCESS_KEY
+    - AMPLIFY_WEBHOOK_URL
+
+accessories:
+  db:
+    image: postgres:17
+    env:
+      clear:
+        POSTGRES_USER: api
+        POSTGRES_DB: content_api
+      secret:
+        - POSTGRES_PASSWORD
+    directories:
+      - data:/var/lib/postgresql/data
+
+# Keep a few old images for rollbacks without filling the small disk
+retain_containers: 3

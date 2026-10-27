@@ -1,0 +1,27 @@
+# Production: the Lightsail box at api.neiaboiz.com (see config/deploy.yml).
+servers:
+  web:
+    - api.neiaboiz.com
+  # Nightly database dump to S3
+  backup:
+    hosts:
+      - api.neiaboiz.com
+    cmd: bin/backup-loop
+
+proxy:
+  host: api.neiaboiz.com
+
+env:
+  clear:
+    APP_HOST: api.neiaboiz.com
+    PUBLIC_API_URL: https://api.neiaboiz.com
+    CORS_ORIGINS: https://neiaboiz.com,https://www.neiaboiz.com
+    S3_BUCKET: neiaboiz-site-images-production
+    BACKUP_PREFIX: production
+    # The main branch's user pool (Amplify backend)
+    COGNITO_USER_POOL_ID: us-east-2_ZYdzW7SgL
+    COGNITO_CLIENT_ID: 7bbcqlf7srjn8lesco3cbgpjp8
+
+accessories:
+  db:
+    host: api.neiaboiz.com

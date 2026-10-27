@@ -78,3 +78,41 @@ image URLs and slugs when building a response.
 | `CORS_ORIGINS` | Comma-separated site origins allowed to call the API |
 | `PUBLIC_API_URL` | Public origin used in image URLs (defaults to the request's) |
 | `AMPLIFY_WEBHOOK_URL` | Amplify incoming webhook for this environment's branch: Publish rebuilds the site |
+
+## Deploy
+
+Production runs on a 1 GB AWS Lightsail box at `api.neiaboiz.com` (us-east-2):
+Rails behind kamal-proxy (HTTPS from Let's Encrypt) and Postgres 17, deployed
+with [Kamal](https://kamal-deploy.org). Images are in S3
+(`neiaboiz-site-images-production`); the database is dumped to
+`neiaboiz-site-backups` every night (kept 30 days).
+
+`bin/kamal` runs Kamal in Docker, so no local Ruby is needed. It uses the
+deploy key `~/.ssh/personal-website-deploy`, and each destination's secrets
+from `.kamal/secrets.<destination>` (git-ignored; keep a copy somewhere safe):
+`SECRET_KEY_BASE`, `DB_PASSWORD`, `POSTGRES_PASSWORD`, `SERVICE_TOKEN`,
+`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` (the `content-api-<destination>` IAM
+user) and `AMPLIFY_WEBHOOK_URL` (that branch's Amplify incoming webhook).
+
+```sh
+bin/kamal deploy -d production              # deploy what's in api/ (commit first)
+bin/kamal app logs -d production -f
+bin/kamal app exec -d production --reuse "bin/backup list"
+bin/kamal app exec -d production --reuse "bin/rails console"
+```
+
+### QA
+
+QA is a temporary box at `qa-api.neiaboiz.com`, behind the password-protected
+Amplify `qa` branch. It costs about a cent an hour while it exists.
+
+```sh
+aws login
+bin/qa-up                                   # copy of production's data and images, then builds the QA site
+bin/qa-up --from-sanity db/import/x-production/<dir> db/import/x-private/<dir>
+bin/kamal deploy -d qa                      # deploy changes to it
+bin/qa-down                                 # delete the box and its DNS record
+```
+
+New boxes are set up by `config/lightsail-init.sh` (swap, Docker, security
+updates).
