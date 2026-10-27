@@ -1,0 +1,42 @@
+# Local development: `docker compose up` from api/ starts Postgres and the API on http://localhost:3000.
+# Run one-off commands with `docker compose run --rm api bin/rails <command>`.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: api
+      POSTGRES_PASSWORD: api
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "api"]
+      interval: 2s
+      retries: 15
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: bash -c "bundle check || bundle install; rm -f tmp/pids/server.pid; bin/rails db:prepare && bin/rails server -b 0.0.0.0"
+    environment:
+      DB_HOST: db
+      DB_USER: api
+      DB_PASSWORD: api
+      CORS_ORIGINS: http://localhost:4200
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - .:/rails
+      - bundle:/usr/local/bundle
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  bundle:

@@ -1,0 +1,24 @@
+# Secrets: never commit the master key or env files
+/config/master.key
+/config/credentials/*.key
+/.env*
+!/.env.example
+/.kamal/secrets*
+
+/.bundle
+/log/*
+/tmp/*
+!/log/.keep
+!/tmp/.keep
+/tmp/pids/*
+!/tmp/pids/
+!/tmp/pids/.keep
+/storage/*
+!/storage/.keep
+/tmp/storage/*
+!/tmp/storage/
+!/tmp/storage/.keep
+
+# Sanity exports used by the importer (may contain private content)
+/db/import/*
+!/db/import/.keep
