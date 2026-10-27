@@ -3,7 +3,12 @@
 class Image < ApplicationRecord
   # Formats served as uploaded instead of converted to WebP
   PASSTHROUGH_TYPES = %w[image/svg+xml image/gif].freeze
-  MAX_DIMENSION = 2400
+
+  # The only sizes served, so requests can't make unlimited variants. These are
+  # what web/src/app/shared/sanity-image uses: its srcset candidates, the
+  # widths components display at, and the aspect ratios they crop to.
+  WIDTHS = [320, 480, 640, 720, 800, 1024, 1200, 1280, 1600, 1920, 2000, 2400].freeze
+  ASPECT_RATIOS = [16.0 / 9, 2.0, 4.0 / 3].freeze
 
   has_one_attached :file
 
@@ -20,10 +25,11 @@ class Image < ApplicationRecord
       lqip: placeholder_for(path),
       original_filename: filename,
     )
-    File.open(path) do |io|
-      image.file.attach(io:, filename:, content_type:)
-      image.save!
-    end
+    # Upload now, while the file is open: attaching an IO defers the upload to
+    # the end of the surrounding transaction, after the file has been closed.
+    blob = File.open(path) { |io| ActiveStorage::Blob.create_and_upload!(io:, filename:, content_type:) }
+    image.file.attach(blob)
+    image.save!
     image
   end
 
@@ -37,17 +43,54 @@ class Image < ApplicationRecord
     thumb&.close!
   end
 
+  def self.allowed_size?(width, height)
+    WIDTHS.include?(width) && (height.nil? || ASPECT_RATIOS.any? { |ratio| (width / ratio).round == height })
+  end
+
+  # A usage's crop and hotspot as URL parameters, rounded so they're stable
+  def self.crop_param(crop)
+    crop && crop.values_at("top", "bottom", "left", "right").map { |n| format("%.4f", n || 0) }.join(",")
+  end
+
+  def self.hotspot_param(hotspot)
+    hotspot && hotspot.values_at("x", "y").map { |n| format("%.4f", n || 0.5) }.join(",")
+  end
+
+  def self.signing_key
+    @signing_key ||= Rails.application.key_generator.generate_key("image-urls", 32)
+  end
+
+  # Signs the parameters fixed by the content (crop, hotspot), so only crops
+  # editors chose can be requested.
+  def signature(crop_param, hotspot_param)
+    OpenSSL::HMAC.hexdigest("SHA256", self.class.signing_key, [id, crop_param, hotspot_param].join("|"))[0, 32]
+  end
+
+  def valid_signature?(crop_param, hotspot_param, given)
+    ActiveSupport::SecurityUtils.secure_compare(signature(crop_param, hotspot_param), given.to_s)
+  end
+
   # What the site receives in place of an asset reference (the shape Sanity's
   # `asset->{ _id, url, metadata { lqip, dimensions } }` projection returned).
-  def as_asset(base_url)
+  # `url` is specific to one usage: it carries that usage's crop and hotspot,
+  # signed, and the site appends `&w=` (and `&h=`) for each size it needs.
+  def as_asset(base_url, crop: nil, hotspot: nil)
+    query = { crop: self.class.crop_param(crop), hotspot: self.class.hotspot_param(hotspot) }.compact
+    query[:s] = signature(query[:crop], query[:hotspot])
     {
       "_id" => id,
-      "url" => "#{base_url}/images/#{id}",
+      "url" => "#{base_url}/images/#{id}?#{query.to_query}",
       "metadata" => {
         "lqip" => lqip,
         "dimensions" => { "width" => width, "height" => height, "aspectRatio" => width.fdiv(height) },
       },
     }
+  end
+
+  # Whether the file is actually in storage (an interrupted upload can leave
+  # the record without it).
+  def stored?
+    file.attached? && file.service.exist?(file.key)
   end
 
   def passthrough?
@@ -94,13 +137,11 @@ class Image < ApplicationRecord
 
   # An Active Storage variant at the requested size for one usage.
   def variant_for(width:, height: nil, crop: nil, hotspot: nil)
-    width = width.clamp(1, MAX_DIMENSION)
-    height = height&.clamp(1, MAX_DIMENSION)
     rect = crop_rect(crop:, hotspot:, width:, height:)
 
     transformations = {}
     transformations[:crop] = rect if rect
-    transformations[:resize_to_limit] = [width, height || MAX_DIMENSION]
+    transformations[:resize_to_limit] = [width, height]
     transformations[:format] = :webp
     transformations[:saver] = { quality: 80 }
     file.variant(transformations)

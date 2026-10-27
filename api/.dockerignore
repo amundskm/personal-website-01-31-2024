@@ -30,6 +30,9 @@
 /tmp/storage/*
 !/tmp/storage/.keep
 
+# Ignore Sanity exports: they include private content (member pages, spending plan).
+/db/import/*
+
 # Ignore Kamal files.
 /config/deploy*.yml
 /.kamal

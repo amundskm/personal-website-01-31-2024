@@ -117,7 +117,9 @@ class SanityImport
   def image_for(source)
     match = ASSET_PATTERN.match(source) or raise ArgumentError, "Unsupported asset #{source}"
     id = "image-#{match[:hash]}-#{match[:size]}-#{match[:ext]}"
-    unless Image.exists?(id)
+    existing = Image.find_by(id:)
+    unless existing&.stored?
+      existing&.destroy!
       Image.create_from_file!(
         path: @dir.join("images", match[:name]), filename: match[:name], id:,
         content_type: CONTENT_TYPES.fetch(match[:ext], "application/octet-stream"),

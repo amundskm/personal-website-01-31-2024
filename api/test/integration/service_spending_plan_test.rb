@@ -18,9 +18,9 @@ class ServiceSpendingPlanTest < ActionDispatch::IntegrationTest
   end
 
   test "remembers merchant patterns" do
-    post "/service/spending-plan/rules", params: { rules: [{ categoryKey: "food", pattern: "kroger" }] }, headers: service, as: :json
+    post "/service/spending-plan/rules", params: { rules: [{ categoryKey: "food", pattern: "acme grocery" }] }, headers: service, as: :json
     assert_response :no_content
-    assert_equal ["KROGER"], SpendingPlan.instance.categories.first["merchantPatterns"]
+    assert_equal ["ACME GROCERY"], SpendingPlan.instance.categories.first["merchantPatterns"]
   end
 
   test "rejects a wrong or missing token" do

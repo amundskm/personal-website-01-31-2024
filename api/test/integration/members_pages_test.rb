@@ -23,7 +23,7 @@ class MembersPagesTest < ActionDispatch::IntegrationTest
   test "admins can open any page" do
     get "/members/pages/budget", headers: bearer(access_token(groups: ["admin"]))
     assert_response :success
-    assert_equal [], response.parsed_body["sections"]
+    assert_nil response.parsed_body["sections"]
   end
 
   test "accounts with no groups are forbidden" do

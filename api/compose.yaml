@@ -1,4 +1,6 @@
 # Local development: `docker compose up` from api/ starts Postgres and the API on http://localhost:3000.
+# The database isn't exposed outside Docker, and the API only on localhost: after an import
+# the dev database holds real content. Use `docker compose exec db psql -U api` to inspect it.
 # Run one-off commands with `docker compose run --rm api bin/rails <command>`.
 services:
   db:
@@ -8,8 +10,6 @@ services:
       POSTGRES_PASSWORD: api
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "api"]
       interval: 2s
@@ -32,7 +32,7 @@ services:
       - .:/rails
       - bundle:/usr/local/bundle
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       db:
         condition: service_healthy

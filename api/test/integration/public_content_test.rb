@@ -57,7 +57,26 @@ class PublicContentTest < ActionDispatch::IntegrationTest
     get "/posts/hello-world"
     cover = response.parsed_body["coverImage"]
     assert_equal "A", cover["alt"]
-    assert_equal "http://www.example.com/images/#{image.id}", cover["asset"]["url"]
+    assert_match %r{\Ahttp://www.example.com/images/#{image.id}\?s=\h{32}\z}, cover["asset"]["url"]
     assert_equal({ "width" => 40, "height" => 20, "aspectRatio" => 2.0 }, cover["asset"]["metadata"]["dimensions"])
+  end
+
+  test "missing values are null, as GROQ returned them" do
+    Post.find_by!(slug: "hello-world").update!(tags: [], body: [])
+    Page.find_by!(slug: "home").update!(sections: [
+      { "_type" => "heroBlock", "_key" => "a", "heading" => "Hi" },
+      { "_type" => "twoColumnBlock", "_key" => "b", "left" => { "content" => [] } },
+    ])
+
+    get "/posts/hello-world"
+    assert_nil response.parsed_body["tags"]
+    assert_nil response.parsed_body["body"]
+
+    get "/pages/home"
+    hero, columns = response.parsed_body["sections"]
+    assert_equal [nil, nil], hero.values_at("image", "buttons")
+    assert hero.key?("image")
+    assert_equal({ "content" => [], "image" => nil }, columns["left"])
+    assert_nil columns["right"]
   end
 end

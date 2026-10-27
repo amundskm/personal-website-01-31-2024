@@ -35,4 +35,19 @@ class ImageTest < ActiveSupport::TestCase
     assert image.file.attached?
     assert_match(/\Aimage-\h{40}\z/, image.id)
   end
+
+  test "create_from_file works inside a transaction, as the importer uses it" do
+    file = png_file(10, 10)
+    image = ActiveRecord::Base.transaction do
+      Image.create_from_file!(path: file.path, filename: "t.png", content_type: "image/png")
+    end
+    assert_equal 10, Vips::Image.new_from_buffer(image.reload.file.download, "").width
+  end
+
+  test "stored? is false when the file is missing from storage" do
+    image = Image.create_from_file!(path: png_file(10, 10).path, filename: "t.png", content_type: "image/png")
+    assert image.stored?
+    image.file.service.delete(image.file.key)
+    assert_not image.stored?
+  end
 end

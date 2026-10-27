@@ -6,6 +6,9 @@
 # built with those references in place, then #resolve replaces every one of
 # them in a single pass with two batched lookups.
 class ContentResolver
+  # Arrays are stored as [] when Sanity had no value; responses return null for
+  # those, like GROQ did (see #list).
+  #
   # Matches the upper bound the GROQ queries used for list blocks
   MAX_LIST_ITEMS = 24
   LINK_FIELDS = %w[_key label kind path url style internal].freeze
@@ -20,8 +23,8 @@ class ContentResolver
       "title" => settings.title,
       "description" => settings.description,
       "footerText" => settings.footer_text,
-      "navigation" => settings.navigation.map { |link| project_link(link) },
-      "socialLinks" => settings.social_links.map { |social| pick(social, %w[_key platform label url]) },
+      "navigation" => list(settings.navigation)&.map { |link| project_link(link) },
+      "socialLinks" => list(settings.social_links)&.map { |social| pick(social, %w[_key platform label url]) },
       "seo" => seo(settings.seo),
     )
   end
@@ -39,7 +42,7 @@ class ContentResolver
   def post_cards(posts) = resolve(posts.map { |post| post_card(post) })
 
   def post(post)
-    resolve(post_card(post).merge("body" => post.body, "seo" => seo(post.seo)))
+    resolve(post_card(post).merge("body" => list(post.body), "seo" => seo(post.seo)))
   end
 
   def project_cards(projects) = resolve(projects.map { |project| project_card(project) })
@@ -49,8 +52,8 @@ class ContentResolver
       project_card(project).merge(
         "repoUrl" => project.repo_url,
         "liveUrl" => project.live_url,
-        "body" => project.body,
-        "gallery" => project.gallery,
+        "body" => list(project.body),
+        "gallery" => list(project.gallery),
         "seo" => seo(project.seo),
       ),
     )
@@ -67,7 +70,7 @@ class ContentResolver
   private
 
   def member_page_summary(page)
-    { "_id" => page.uid, "title" => page.title, "slug" => page.slug, "summary" => page.summary, "audiences" => page.audiences }
+    { "_id" => page.uid, "title" => page.title, "slug" => page.slug, "summary" => page.summary, "audiences" => list(page.audiences) }
   end
 
   def post_card(post)
@@ -77,7 +80,7 @@ class ContentResolver
       "slug" => post.slug,
       "excerpt" => post.excerpt,
       "publishedAt" => post.published_at&.utc&.iso8601(3),
-      "tags" => post.tags,
+      "tags" => list(post.tags),
       "coverImage" => post.cover_image,
     }
   end
@@ -88,7 +91,7 @@ class ContentResolver
       "title" => project.title,
       "slug" => project.slug,
       "summary" => project.summary,
-      "techStack" => project.tech_stack,
+      "techStack" => list(project.tech_stack),
       "year" => project.year,
       "featured" => project.featured,
       "coverImage" => project.cover_image,
@@ -106,11 +109,21 @@ class ContentResolver
   # Like a GROQ projection: exactly these keys, null when missing
   def pick(hash, keys) = keys.index_with { |key| hash[key] }
 
+  def list(array) = array.presence
+
+  # Each block gets the keys the GROQ section projection added (null when
+  # missing), plus its list items.
   def sections(sections)
-    sections.map do |section|
+    list(sections)&.map do |section|
       case section["_type"]
       when "heroBlock"
-        section.merge("buttons" => section["buttons"]&.map { |link| project_link(link) })
+        section.merge("image" => section["image"], "buttons" => section["buttons"]&.map { |link| project_link(link) })
+      when "richTextBlock"
+        section.merge("content" => section["content"])
+      when "imageBlock"
+        section.merge("image" => section["image"])
+      when "twoColumnBlock"
+        section.merge(%w[left right].index_with { |side| section[side]&.merge("content" => section[side]["content"], "image" => section[side]["image"]) })
       when "ctaBlock"
         section.merge("button" => project_link(section["button"]))
       when "projectGridBlock"
@@ -128,7 +141,7 @@ class ContentResolver
     when "manual"
       uids = Array(section["projects"]).map { |ref| ref["_ref"] }
       by_uid = Project.where(uid: uids).index_by(&:uid)
-      uids.map { |uid| by_uid[uid] && project_card(by_uid[uid]) }
+      uids.map { |uid| by_uid[uid] && project_card(by_uid[uid]) }.presence
     when "all"
       Project.in_display_order.limit(MAX_LIST_ITEMS).map { |project| project_card(project) }
     else
@@ -160,7 +173,8 @@ class ContentResolver
     when Hash
       value.to_h do |key, item|
         if key == "asset" && item.is_a?(Hash) && item["_ref"]
-          [key, images[item["_ref"]]&.as_asset(@base_url)]
+          # The usage (this hash) holds the crop and hotspot
+          [key, images[item["_ref"]]&.as_asset(@base_url, crop: value["crop"], hotspot: value["hotspot"])]
         elsif key == "internal" && item.is_a?(Hash) && item["_ref"]
           [key, docs[item["_ref"]]]
         else
