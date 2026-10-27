@@ -90,6 +90,12 @@ export const routes: Routes = [
     canActivate: [requireRole('neia-boiz')],
     loadComponent: () => import('./pages/events/profile-page').then((m) => m.ProfilePage),
   },
+  // Editing the site's content. The content API also requires the admin group.
+  {
+    path: 'admin',
+    canActivate: [requireRole('admin')],
+    loadChildren: () => import('./admin/admin.routes').then((m) => m.ADMIN_ROUTES),
+  },
   // The signed "Unsubscribe" link in event emails; no login needed
   {
     path: 'unsubscribe',

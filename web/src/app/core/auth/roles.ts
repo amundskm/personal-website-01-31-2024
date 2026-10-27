@@ -2,9 +2,9 @@
  * Permission groups. Each one is a Cognito user pool group (created by
  * `amplify/auth/resource.ts`); add a user to a group to grant that permission.
  *
- * `admin` can see everything. To add a role, add it here, to `groups` in
- * `amplify/auth/resource.ts`, to `AUDIENCES` in
- * `studio/schemaTypes/documents/memberPage.ts`, and redeploy the backend.
+ * `admin` can see everything. To add a role, add it here and to `groups` in
+ * `amplify/auth/resource.ts`, and redeploy the backend. Members pages in the
+ * admin offer every role here (except admin) as an audience.
  */
 export const ROLES = ['admin', 'wife', 'neia-boiz', 'da-boiz', 'da-girls'] as const;
 

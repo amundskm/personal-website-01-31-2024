@@ -77,6 +77,9 @@ class AdminTest < ActionDispatch::IntegrationTest
     save "/admin/posts/#{post_id}", { "title" => "Taken", "slug" => "block-based-pages-in-angular" }
     assert_response :unprocessable_content
 
+    save "/admin/pages", { "title" => "Blog", "slug" => "blog" }, method: :post
+    assert_match "reserved", response.parsed_body["message"]
+
     save "/admin/pages", { "title" => "Bad", "slug" => "bad", "sections" => [{ "_type" => "evilBlock" }] }, method: :post
     assert_response :unprocessable_content
     assert_match "evilBlock", response.parsed_body["message"]

@@ -39,6 +39,8 @@ export const serverRoutes: ServerRoute[] = [
   { path: 'events/**', renderMode: RenderMode.Client },
   { path: 'profile', renderMode: RenderMode.Client },
   { path: 'unsubscribe', renderMode: RenderMode.Client },
+  { path: 'admin', renderMode: RenderMode.Client },
+  { path: 'admin/**', renderMode: RenderMode.Client },
   {
     path: ':slug',
     renderMode: RenderMode.Prerender,

@@ -20,7 +20,19 @@ export type AuthState =
 
 export interface ApiRequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  /** JSON-encoded, except FormData (file uploads), which is sent as is. */
   body?: unknown;
+}
+
+/** A failed API call: the API's message, plus per-field errors when it sent them. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly errors: Record<string, string[]> = {},
+  ) {
+    super(message);
+  }
 }
 
 /** Result of a sign-in step: done, or what the login form must ask for next. */
@@ -116,18 +128,23 @@ export class AuthService {
     const { tokens } = await auth.fetchAuthSession();
     if (!tokens) throw new Error('Not signed in');
 
+    const { body } = options;
+    const isForm = body instanceof FormData;
     const response = await fetch(url, {
       method: options.method ?? 'GET',
       headers: {
         Authorization: `Bearer ${tokens.accessToken.toString()}`,
-        ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(body === undefined || isForm ? {} : { 'Content-Type': 'application/json' }),
       },
-      ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+      ...(body === undefined ? {} : { body: isForm ? body : JSON.stringify(body) }),
     });
-    if (response.status === 404) return null;
+    if (response.status === 404 || response.status === 204) return null;
     if (!response.ok) {
-      const { message } = (await response.json().catch(() => ({}))) as { message?: string };
-      throw new Error(message ?? `The server responded ${response.status}`);
+      const { message, errors } = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        errors?: Record<string, string[]>;
+      };
+      throw new ApiError(message ?? `The server responded ${response.status}`, response.status, errors);
     }
     return (await response.json()) as T;
   }

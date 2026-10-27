@@ -139,6 +139,17 @@ const DEFAULT_NAV = [
                           </a>
                         </li>
                       }
+                      @if (auth.isAdmin()) {
+                        <li role="none">
+                          <a
+                            role="menuitem"
+                            routerLink="/admin"
+                            (click)="closeAccount()"
+                          >
+                            Edit site
+                          </a>
+                        </li>
+                      }
                       <li role="none">
                         <button
                           role="menuitem"
