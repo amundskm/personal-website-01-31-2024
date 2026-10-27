@@ -19,7 +19,7 @@ import { filter } from "rxjs";
 import { AuthService } from "../../core/auth/auth.service";
 import { MyProfileService } from "../../core/events/my-profile.service";
 import { MemberAvatar } from "../../shared/member-avatar/member-avatar";
-import type { SanityLink, SiteSettings } from "../../core/models";
+import type { SiteLink, SiteSettings } from "../../core/models";
 import { resolveLink } from "../../core/paths";
 import { WizardHat } from "../../shared/wizard/wizard-hat";
 
@@ -32,7 +32,7 @@ const internalLink = (key: string, label: string, path: string) =>
     url: null,
     style: null,
     internal: null,
-  }) satisfies SanityLink & {
+  }) satisfies SiteLink & {
     _key: string;
   };
 

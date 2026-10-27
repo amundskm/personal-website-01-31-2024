@@ -10,8 +10,8 @@
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import * as q from '../../web/src/app/core/queries';
-import { sanityConfig } from '../../web/src/app/core/sanity.config';
+import * as q from './sanity-queries';
+const SANITY_API_VERSION = '2025-02-19';
 
 const API = process.argv[2] ?? 'http://localhost:3000';
 const SERVICE_TOKEN = /^SERVICE_TOKEN=(.*)$/m.exec(readFileSync('api/.env', 'utf8'))?.[1];
@@ -22,7 +22,7 @@ function groq(query: string, dataset: string, params: Record<string, unknown> = 
   const out = execFileSync(
     process.execPath,
     ['../node_modules/sanity/bin/sanity', 'documents', 'query', inlined, '--dataset', dataset,
-      '--api-version', `v${sanityConfig.apiVersion}`],
+      '--api-version', `v${SANITY_API_VERSION}`],
     { cwd: 'studio', encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 },
   );
   return JSON.parse(out);

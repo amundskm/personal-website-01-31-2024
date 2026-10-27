@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import type { SanityLink } from '../../core/models';
+import type { SiteLink } from '../../core/models';
 import { resolveLink } from '../../core/paths';
 
 /** Renders a CMS link as a router link or external anchor, optionally styled as a button. */
@@ -28,7 +28,7 @@ import { resolveLink } from '../../core/paths';
   `,
 })
 export class CmsLinkComponent {
-  readonly link = input.required<SanityLink | null | undefined>();
+  readonly link = input.required<SiteLink | null | undefined>();
   /** Render with button styling, using the link's `style` field. */
   readonly asButton = input(false);
   /** Extra classes to put on the anchor. */

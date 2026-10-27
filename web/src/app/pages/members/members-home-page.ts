@@ -9,7 +9,7 @@ import {
 import { RouterLink } from '@angular/router';
 import { AuthService } from '../../core/auth/auth.service';
 import { ROLE_LABELS } from '../../core/auth/roles';
-import type { MEMBER_PAGES_QUERY_RESULT } from '../../core/sanity.types';
+import type { MemberPageSummary } from '../../core/models';
 import { SeoService } from '../../core/seo.service';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
 
@@ -88,7 +88,7 @@ export class MembersHomePage implements OnInit {
   protected readonly pages = resource({
     // Users without a group would only get a 403, so don't ask
     params: () => (this.roleNames() ? {} : undefined),
-    loader: () => this.auth.fetchMembersApi<MEMBER_PAGES_QUERY_RESULT>('/pages'),
+    loader: () => this.auth.fetchContentApi<MemberPageSummary[]>('/members/pages'),
   });
 
   ngOnInit(): void {

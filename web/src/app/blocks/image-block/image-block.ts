@@ -1,10 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import type { SectionOf } from '../../core/models';
-import { SanityImageComponent } from '../../shared/sanity-image/sanity-image';
+import { CmsImageComponent } from '../../shared/cms-image/cms-image';
 
 @Component({
   selector: 'app-image-block',
-  imports: [SanityImageComponent],
+  imports: [CmsImageComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="section">
@@ -13,7 +13,7 @@ import { SanityImageComponent } from '../../shared/sanity-image/sanity-image';
         [class.container]="width() !== 'full'"
         [class.container--narrow]="width() === 'content'"
       >
-        <app-sanity-image [image]="block().image" [width]="pixelWidth()" [sizes]="sizes()" />
+        <app-cms-image [image]="block().image" [width]="pixelWidth()" [sizes]="sizes()" />
         @if (block().image?.caption) {
           <figcaption>{{ block().image?.caption }}</figcaption>
         }

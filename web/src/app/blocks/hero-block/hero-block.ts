@@ -1,12 +1,12 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import type { SectionOf } from '../../core/models';
 import { CmsLinkComponent } from '../../shared/cms-link/cms-link';
-import { SanityImageComponent } from '../../shared/sanity-image/sanity-image';
+import { CmsImageComponent } from '../../shared/cms-image/cms-image';
 import { WizardMascot } from '../../shared/wizard/wizard-mascot';
 
 @Component({
   selector: 'app-hero-block',
-  imports: [CmsLinkComponent, SanityImageComponent, WizardMascot],
+  imports: [CmsLinkComponent, CmsImageComponent, WizardMascot],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let b = block();
@@ -36,7 +36,7 @@ import { WizardMascot } from '../../shared/wizard/wizard-mascot';
         </div>
         @if (b.image?.asset) {
           <div class="hero__media">
-            <app-sanity-image
+            <app-cms-image
               [image]="b.image"
               [width]="b.layout === 'split' ? 720 : 1200"
               [priority]="true"

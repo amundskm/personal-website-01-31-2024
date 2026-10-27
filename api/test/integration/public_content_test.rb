@@ -79,4 +79,14 @@ class PublicContentTest < ActionDispatch::IntegrationTest
     assert_equal({ "content" => [], "image" => nil }, columns["left"])
     assert_nil columns["right"]
   end
+
+  test "a hand-picked project grid leaves out projects that no longer exist" do
+    keep = Project.find_by!(slug: "personal-website")
+    Page.find_by!(slug: "home").update!(sections: [
+      { "_type" => "projectGridBlock", "_key" => "g", "mode" => "manual",
+        "projects" => [{ "_ref" => "deleted-project" }, { "_ref" => keep.uid }] },
+    ])
+    get "/pages/home"
+    assert_equal ["personal-website"], response.parsed_body["sections"].first["items"].map { |p| p["slug"] }
+  end
 end

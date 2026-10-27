@@ -9,17 +9,17 @@ import {
   type ToolkitPortableTextList,
 } from '@portabletext/toolkit';
 import type { PortableTextBlock } from '@portabletext/types';
-import type { SanityImage } from '../../core/models';
+import type { CmsImage } from '../../core/models';
 import type { CodeValue } from './code-block';
 
 /**
  * A flattened, template-friendly view of Portable Text. Converting up front
- * keeps the Angular template free of type checks on Sanity's raw structures.
+ * keeps the Angular template free of type checks on Portable Text's raw structures.
  */
 export type PtNode =
   | { kind: 'block'; key: string; style: string; children: PtSpan[] }
   | { kind: 'list'; key: string; ordered: boolean; items: PtListItem[] }
-  | { kind: 'image'; key: string; image: SanityImage }
+  | { kind: 'image'; key: string; image: CmsImage }
   | { kind: 'code'; key: string; value: CodeValue }
   | { kind: 'unknown'; key: string; type: string };
 
@@ -63,7 +63,7 @@ function toNode(node: AnyNode, index: number): PtNode {
     };
   }
   if (node._type === 'accessibleImage' || node._type === 'image') {
-    return { kind: 'image', key, image: node as unknown as SanityImage };
+    return { kind: 'image', key, image: node as unknown as CmsImage };
   }
   if (node._type === 'code') {
     return { kind: 'code', key, value: node as CodeValue };

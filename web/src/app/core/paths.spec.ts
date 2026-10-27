@@ -1,7 +1,7 @@
-import type { SanityLink } from './models';
+import type { SiteLink } from './models';
 import { documentPath, resolveLink } from './paths';
 
-const link = (overrides: Partial<SanityLink>): SanityLink => ({
+const link = (overrides: Partial<SiteLink>): SiteLink => ({
   label: 'Link',
   kind: 'internal',
   path: null,

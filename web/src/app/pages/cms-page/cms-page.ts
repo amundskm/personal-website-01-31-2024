@@ -1,8 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input } from '@angular/core';
 import { BlockRenderer } from '../../blocks/block-renderer';
-import { PAGE_QUERY } from '../../core/queries';
-import { sanityResource } from '../../core/sanity';
-import type { PAGE_QUERY_RESULT } from '../../core/sanity.types';
+import { contentResource, segment } from '../../core/content-api';
+import type { Page } from '../../core/models';
 import { SeoService } from '../../core/seo.service';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
 import { NotFound } from '../not-found/not-found';
@@ -37,9 +36,7 @@ export class CmsPage {
 
   private readonly resolvedSlug = computed(() => this.slug() ?? 'home');
 
-  protected readonly page = sanityResource<PAGE_QUERY_RESULT>(PAGE_QUERY, () => ({
-    slug: this.resolvedSlug(),
-  }));
+  protected readonly page = contentResource<Page>(() => `/pages/${segment(this.resolvedSlug())}`);
 
   constructor() {
     effect(() => {

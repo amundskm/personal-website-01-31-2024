@@ -1,5 +1,6 @@
 import { isPlatformBrowser } from '@angular/common';
 import { computed, inject, Injectable, PLATFORM_ID, signal } from '@angular/core';
+import { contentApiUrl } from '../content-api';
 import { hasAnyRole, isRole, type Role } from './roles';
 
 type AuthApi = typeof import('aws-amplify/auth');
@@ -16,6 +17,11 @@ export type AuthState =
   | { status: 'unavailable' }
   | { status: 'signedOut' }
   | { status: 'signedIn'; user: AuthUser };
+
+export interface ApiRequestOptions {
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  body?: unknown;
+}
 
 /** Result of a sign-in step: done, or what the login form must ask for next. */
 export type SignInStep = 'done' | 'newPassword';
@@ -95,15 +101,22 @@ export class AuthService {
    * Calls the members API with the user's access token. Returns null on 404;
    * other errors throw with the API's message.
    */
-  async fetchMembersApi<T>(
-    path: string,
-    options: { method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; body?: unknown } = {},
-  ): Promise<T | null> {
-    const { auth, membersApiUrl } = await this.requireBackend();
+  async fetchMembersApi<T>(path: string, options: ApiRequestOptions = {}): Promise<T | null> {
+    const { membersApiUrl } = await this.requireBackend();
+    return this.fetchWithToken<T>(`${membersApiUrl}${path}`, options);
+  }
+
+  /** Calls the content API (members-only content) with the user's access token, like fetchMembersApi. */
+  async fetchContentApi<T>(path: string, options: ApiRequestOptions = {}): Promise<T | null> {
+    return this.fetchWithToken<T>(`${contentApiUrl}${path}`, options);
+  }
+
+  private async fetchWithToken<T>(url: string, options: ApiRequestOptions): Promise<T | null> {
+    const { auth } = await this.requireBackend();
     const { tokens } = await auth.fetchAuthSession();
     if (!tokens) throw new Error('Not signed in');
 
-    const response = await fetch(`${membersApiUrl}${path}`, {
+    const response = await fetch(url, {
       method: options.method ?? 'GET',
       headers: {
         Authorization: `Bearer ${tokens.accessToken.toString()}`,
@@ -114,7 +127,7 @@ export class AuthService {
     if (response.status === 404) return null;
     if (!response.ok) {
       const { message } = (await response.json().catch(() => ({}))) as { message?: string };
-      throw new Error(message ?? `Members API responded ${response.status}`);
+      throw new Error(message ?? `The server responded ${response.status}`);
     }
     return (await response.json()) as T;
   }

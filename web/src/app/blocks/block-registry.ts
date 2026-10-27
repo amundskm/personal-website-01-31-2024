@@ -10,7 +10,7 @@ import { SkillsBlock } from './skills-block/skills-block';
 import { TwoColumnBlock } from './two-column-block/two-column-block';
 
 /**
- * Maps each Sanity block `_type` to the Angular component that renders it.
+ * Maps each section `_type` to the Angular component that renders it.
  * Every component receives the block data through a `block` input.
  *
  * Typed as a complete record, so adding a block schema in the Studio and

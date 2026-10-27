@@ -2,11 +2,11 @@ import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import type { SectionOf } from '../../core/models';
 import { PortableTextComponent } from '../../shared/portable-text/portable-text';
-import { SanityImageComponent } from '../../shared/sanity-image/sanity-image';
+import { CmsImageComponent } from '../../shared/cms-image/cms-image';
 
 @Component({
   selector: 'app-two-column-block',
-  imports: [NgTemplateOutlet, PortableTextComponent, SanityImageComponent],
+  imports: [NgTemplateOutlet, PortableTextComponent, CmsImageComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let b = block();
@@ -46,7 +46,7 @@ import { SanityImageComponent } from '../../shared/sanity-image/sanity-image';
 
     <ng-template #columnTpl let-column>
       @if (column?.image?.asset) {
-        <app-sanity-image
+        <app-cms-image
           class="column__image"
           [image]="column.image"
           [width]="640"

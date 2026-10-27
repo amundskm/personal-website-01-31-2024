@@ -1,11 +1,10 @@
 import { ChangeDetectionStrategy, Component, effect, inject, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { PROJECT_QUERY } from '../../core/queries';
-import { sanityResource } from '../../core/sanity';
-import type { PROJECT_QUERY_RESULT } from '../../core/sanity.types';
+import { contentResource, segment } from '../../core/content-api';
+import type { Project } from '../../core/models';
 import { SeoService } from '../../core/seo.service';
 import { PortableTextComponent } from '../../shared/portable-text/portable-text';
-import { SanityImageComponent } from '../../shared/sanity-image/sanity-image';
+import { CmsImageComponent } from '../../shared/cms-image/cms-image';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
 import { NotFound } from '../not-found/not-found';
 
@@ -14,7 +13,7 @@ import { NotFound } from '../not-found/not-found';
   imports: [
     RouterLink,
     PortableTextComponent,
-    SanityImageComponent,
+    CmsImageComponent,
     NotFound,
     LoadingComponent,
     LoadErrorComponent,
@@ -67,7 +66,7 @@ import { NotFound } from '../not-found/not-found';
           </header>
           @if (p.coverImage?.asset) {
             <div class="container article-cover">
-              <app-sanity-image
+              <app-cms-image
                 [image]="p.coverImage"
                 [width]="1200"
                 [priority]="true"
@@ -82,7 +81,7 @@ import { NotFound } from '../not-found/not-found';
             <div class="container gallery">
               @for (image of p.gallery; track image._key) {
                 <figure>
-                  <app-sanity-image
+                  <app-cms-image
                     [image]="image"
                     [width]="800"
                     sizes="(min-width: 48rem) 50vw, 100vw"
@@ -110,9 +109,7 @@ export class ProjectPage {
 
   readonly slug = input.required<string>();
 
-  protected readonly project = sanityResource<PROJECT_QUERY_RESULT>(PROJECT_QUERY, () => ({
-    slug: this.slug(),
-  }));
+  protected readonly project = contentResource<Project>(() => `/projects/${segment(this.slug())}`);
 
   constructor() {
     effect(() => {

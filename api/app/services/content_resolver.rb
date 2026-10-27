@@ -141,7 +141,7 @@ class ContentResolver
     when "manual"
       uids = Array(section["projects"]).map { |ref| ref["_ref"] }
       by_uid = Project.where(uid: uids).index_by(&:uid)
-      uids.map { |uid| by_uid[uid] && project_card(by_uid[uid]) }.presence
+      uids.filter_map { |uid| by_uid[uid] && project_card(by_uid[uid]) }.presence
     when "all"
       Project.in_display_order.limit(MAX_LIST_ITEMS).map { |project| project_card(project) }
     else

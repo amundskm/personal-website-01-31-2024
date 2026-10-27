@@ -1,4 +1,6 @@
-import { defineQuery } from 'groq';
+// The GROQ queries the site used before the content API, kept for compare-with-sanity.mts.
+// Delete with that script after the cutover.
+const defineQuery = (query: string) => query;
 
 // ---------------------------------------------------------------------------
 // Reusable projections

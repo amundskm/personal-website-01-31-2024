@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit } from '@angular/core';
-import { PROJECTS_QUERY } from '../../core/queries';
-import { sanityResource } from '../../core/sanity';
-import type { PROJECTS_QUERY_RESULT } from '../../core/sanity.types';
+import { contentResource } from '../../core/content-api';
+import type { ProjectCard } from '../../core/models';
 import { SeoService } from '../../core/seo.service';
 import { ProjectCardComponent } from '../../shared/cards/project-card';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
@@ -18,9 +17,10 @@ import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status
           <p class="section-intro">Things I've built, shipped and tinkered with.</p>
         </header>
         @if (projects.hasValue()) {
-          @if (projects.value().length) {
+          @let list = projects.value() ?? [];
+          @if (list.length) {
             <div class="grid">
-              @for (project of projects.value(); track project._id) {
+              @for (project of list; track project._id) {
                 <app-project-card [project]="project" />
               }
             </div>
@@ -38,7 +38,7 @@ import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status
 })
 export class ProjectListPage implements OnInit {
   private readonly seo = inject(SeoService);
-  protected readonly projects = sanityResource<PROJECTS_QUERY_RESULT>(PROJECTS_QUERY);
+  protected readonly projects = contentResource<ProjectCard[]>('/projects');
 
   ngOnInit(): void {
     this.seo.setPage({ title: 'Projects' });

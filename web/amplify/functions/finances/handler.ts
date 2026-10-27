@@ -26,16 +26,26 @@ import {
   toInfo,
   validateStatement,
 } from '../../../src/app/core/finances/finances';
-import { SPENDING_PLAN_QUERY } from '../../../src/app/core/queries';
-import type { SPENDING_PLAN_QUERY_RESULT } from '../../../src/app/core/sanity.types';
+import { contentApi } from '../shared/content-api';
 import { callerGroups, json } from '../shared/http';
-import { sanityClient } from '../shared/sanity';
 
 const TABLE = process.env['FINANCES_TABLE']!;
-const PLAN_ID = 'spendingPlan';
 
 const db = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-const sanity = sanityClient(env.SANITY_DATASET, env.SANITY_WRITE_TOKEN);
+const content = contentApi(env.CONTENT_API_URL, env.CONTENT_API_SERVICE_TOKEN);
+
+/** The content API's spending plan; missing values are null. */
+interface SpendingPlanResponse {
+  categories: {
+    key: string;
+    name: string | null;
+    monthlyBudget: number | null;
+    merchantPatterns: string[] | null;
+    activeMonths: number[] | null;
+    plannedPurchases: { label: string | null; month: number | null; amount: number | null }[] | null;
+  }[];
+  stages: { label: string | null; startDate: string | null; monthlyTarget: number | null }[];
+}
 
 /**
  * GET    /finances                  (wife)  → plan budgets + monthly totals, no transactions or rules
@@ -138,7 +148,7 @@ async function adminData(): Promise<FinancesAdminData> {
 }
 
 async function loadPlan(): Promise<SpendingPlan> {
-  const result = await sanity.query<SPENDING_PLAN_QUERY_RESULT>(SPENDING_PLAN_QUERY);
+  const result = await content.get<SpendingPlanResponse>('/service/spending-plan');
   return {
     categories: (result?.categories ?? []).map((c): PlanCategory => ({
       key: c.key,
@@ -173,48 +183,12 @@ async function loadStatements(): Promise<Statement[]> {
 
 /**
  * Adds merchant patterns to their categories in the plan, moving a pattern
- * that was filed under a different category.
+ * that was filed under a different category. The content API validates and
+ * applies them in one locked update.
  */
 async function rememberRules(rules: NewRule[]): Promise<void> {
-  const valid = rules
-    .filter((r) => typeof r?.categoryKey === 'string' && typeof r?.pattern === 'string')
-    .map((r) => ({ categoryKey: r.categoryKey, pattern: r.pattern.trim().toUpperCase() }))
-    .filter((r) => r.pattern.length >= 3 && r.pattern.length <= 80);
-  if (!valid.length) return;
-
-  const plan = await loadPlan();
-  const known = new Set(plan.categories.map((c) => c.key));
-  const mutations = valid.flatMap(({ categoryKey, pattern }) => {
-    if (!known.has(categoryKey)) return [];
-    const others = plan.categories.filter(
-      (c) =>
-        c.key !== categoryKey &&
-        c.merchantPatterns?.some((p) => p.trim().toUpperCase() === pattern),
-    );
-    const target = plan.categories.find((c) => c.key === categoryKey)!;
-    const alreadyThere = target.merchantPatterns?.some((p) => p.trim().toUpperCase() === pattern);
-    const path = `categories[_key=="${categoryKey}"].merchantPatterns`;
-    return [
-      ...others.map((c) => ({
-        patch: {
-          id: PLAN_ID,
-          unset: [`categories[_key=="${c.key}"].merchantPatterns[@ == ${JSON.stringify(pattern)}]`],
-        },
-      })),
-      ...(alreadyThere
-        ? []
-        : [
-            {
-              patch: {
-                id: PLAN_ID,
-                setIfMissing: { [path]: [] },
-                insert: { after: `${path}[-1]`, items: [pattern] },
-              },
-            },
-          ]),
-    ];
-  });
-  if (mutations.length) await sanity.mutate(mutations);
+  if (!rules.length) return;
+  await content.post('/service/spending-plan/rules', { rules });
 }
 
 /**

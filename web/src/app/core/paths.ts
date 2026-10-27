@@ -1,4 +1,4 @@
-import type { SanityLink } from './models';
+import type { SiteLink } from './models';
 
 /** The site URL for a document of the given type. */
 export function documentPath(type: 'page' | 'post' | 'project', slug: string | null): string {
@@ -17,7 +17,7 @@ export type ResolvedLink =
   { kind: 'internal'; path: string } | { kind: 'external'; href: string; newTab: boolean };
 
 /** Turns a CMS link into either a router path or an external href. */
-export function resolveLink(link: SanityLink | null | undefined): ResolvedLink | null {
+export function resolveLink(link: SiteLink | null | undefined): ResolvedLink | null {
   if (!link) return null;
   if (link.kind === 'external') {
     if (!link.url) return null;

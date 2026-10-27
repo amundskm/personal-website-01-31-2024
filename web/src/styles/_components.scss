@@ -250,7 +250,7 @@
 .article-cover {
   margin-bottom: var(--space-12);
 
-  app-sanity-image {
+  app-cms-image {
     overflow: hidden;
     border-radius: var(--radius-lg);
   }
@@ -269,7 +269,7 @@
     margin: 0;
   }
 
-  app-sanity-image {
+  app-cms-image {
     overflow: hidden;
     border-radius: var(--radius-md);
   }

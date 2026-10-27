@@ -1,12 +1,11 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, effect, inject, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { POST_QUERY } from '../../core/queries';
-import { sanityResource } from '../../core/sanity';
-import type { POST_QUERY_RESULT } from '../../core/sanity.types';
+import { contentResource, segment } from '../../core/content-api';
+import type { Post } from '../../core/models';
 import { SeoService } from '../../core/seo.service';
 import { PortableTextComponent } from '../../shared/portable-text/portable-text';
-import { SanityImageComponent } from '../../shared/sanity-image/sanity-image';
+import { CmsImageComponent } from '../../shared/cms-image/cms-image';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
 import { NotFound } from '../not-found/not-found';
 
@@ -16,7 +15,7 @@ import { NotFound } from '../not-found/not-found';
     DatePipe,
     RouterLink,
     PortableTextComponent,
-    SanityImageComponent,
+    CmsImageComponent,
     NotFound,
     LoadingComponent,
     LoadErrorComponent,
@@ -44,7 +43,7 @@ import { NotFound } from '../not-found/not-found';
           </header>
           @if (p.coverImage?.asset) {
             <div class="container article-cover">
-              <app-sanity-image
+              <app-cms-image
                 [image]="p.coverImage"
                 [width]="1200"
                 [aspectRatio]="2"
@@ -72,9 +71,7 @@ export class PostPage {
 
   readonly slug = input.required<string>();
 
-  protected readonly post = sanityResource<POST_QUERY_RESULT>(POST_QUERY, () => ({
-    slug: this.slug(),
-  }));
+  protected readonly post = contentResource<Post>(() => `/posts/${segment(this.slug())}`);
 
   constructor() {
     effect(() => {

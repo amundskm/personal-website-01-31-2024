@@ -1,74 +1,62 @@
 # Personal Website
 
-A personal site built with **Angular 22** and **Sanity** as a headless, block-based CMS.
-Pages are assembled in Sanity Studio from reusable sections (hero, rich text, project grid, …),
+A personal site built with **Angular 22**, with content served by a **Rails + PostgreSQL** API.
+Pages are assembled from reusable sections (hero, rich text, project grid, …),
 each rendered by its own Angular component. The site is prerendered to static HTML and hosted on
 **AWS Amplify**.
 
 ```
 personal-website/
 ├── web/        Angular app (prerendered/static, SCSS)
-│   └── amplify/  Amplify Gen 2 backend: Cognito login + members-only content API
-├── studio/     Sanity Studio (content editor + schemas)
+│   └── amplify/  Amplify Gen 2 backend: Cognito login + members API (finances, events)
+├── api/        Content API: Rails + Postgres (pages, posts, projects, members pages, spending plan, images)
+├── studio/     Sanity Studio: the old editor, being replaced (see "Editing content")
 └── amplify.yml AWS Amplify build spec
 ```
 
 ## Prerequisites
 
 - Node.js **24.15+** (`nvm use` reads `.nvmrc`)
-- A free Sanity account: https://www.sanity.io
+- Docker (the content API and its database run in containers)
 
-## 1. Connect Sanity
-
-1. Create a project at https://www.sanity.io/manage and copy its **Project ID**.
-2. Configure the Studio:
-   ```sh
-   cp studio/.env.example studio/.env   # then set SANITY_STUDIO_PROJECT_ID
-   ```
-3. Configure the website: set `projectId` in `web/src/app/core/sanity.config.ts`.
-   The ID is public, so committing it is fine.
-4. Log in, create the dataset and allow the dev server to query it:
-   ```sh
-   cd studio
-   npx sanity login
-   npx sanity dataset create production        # skip if it already exists
-   npx sanity cors add http://localhost:4200 --no-credentials
-   ```
-5. *(Optional)* Import sample content: a home page, an about page, posts, projects and site settings.
-   ```sh
-   npx sanity dataset import seed/sample-content.ndjson production --replace
-   ```
-
-## 2. Run locally
+## Run locally
 
 ```sh
-npm install           # from the repo root (installs both workspaces)
-npm run dev:studio    # Studio  → http://localhost:3333
-npm run dev:web       # Website → http://localhost:4200
+npm install                         # from the repo root (installs the workspaces)
+cd api && docker compose up -d      # Content API → http://localhost:3000 (see api/README.md)
+npm run dev:web                     # Website     → http://localhost:4200
 ```
 
-Publish a change in the Studio and refresh the site to see it.
-In dev mode the site queries Sanity live.
+The site reads `http://localhost:3000` unless a build sets `CONTENT_API_URL` (see Deploy).
+To load content, import a Sanity export or the sample content into the API (`api/README.md`).
+
+## Editing content
+
+The site no longer reads Sanity: content lives in the content API's database. Until the admin
+pages are built, content is still edited in Sanity Studio and copied over with the importer
+(`bin/rails "sanity:import[…]"`, see `api/README.md`). Re-import after editing.
 
 ## How pages are built
 
-| Studio document | URL | Angular component |
+| Content | URL | Angular component |
 |---|---|---|
 | Page with slug `home` | `/` | `pages/cms-page` |
 | Page with any other slug | `/<slug>` | `pages/cms-page` |
 | Blog post | `/blog/<slug>` (list at `/blog`) | `pages/blog/*` |
 | Project | `/projects/<slug>` (list at `/projects`) | `pages/projects/*` |
 | Site settings | header nav, footer, social links, default SEO | `layout/*` |
-| Members page *(private dataset)* | `/members/<slug>` (list at `/members`), signed-in users only | `pages/members/*` |
+| Members page | `/members/<slug>` (list at `/members`), signed-in users only | `pages/members/*` |
 
+Content comes from the content API (`web/src/app/core/content-api.ts`), typed in `core/models.ts`.
 A page's **sections** are rendered by `web/src/app/blocks/block-renderer.ts`.
 It looks up each section's `_type` in `blocks/block-registry.ts`.
 
 ### Adding a new block type
 
 1. **Schema:** create `studio/schemaTypes/blocks/myBlock.ts` and add it to `studio/schemaTypes/blocks/index.ts`.
-2. **Query:** if the block contains images, links or references, project them in `PAGE_QUERY` (`web/src/app/core/queries.ts`).
-3. **Types:** run `npm run typegen` to regenerate `web/src/app/core/sanity.types.ts`.
+2. **API:** if the block contains links or references, resolve them in `sections` in
+   `api/app/services/content_resolver.rb` (images are resolved everywhere automatically).
+3. **Types:** add the block to `PageSection` in `web/src/app/core/models.ts`.
    `BLOCK_REGISTRY` won't compile until step 4 is done.
 4. **Component:** create `web/src/app/blocks/my-block/my-block.ts` with a `block = input.required<SectionOf<'myBlock'>>()`.
    Register it in `block-registry.ts`.
@@ -89,45 +77,38 @@ Some content is only visible to signed-in users with the right **permission** (r
 | `wife` | | members pages shared with "Wife" |
 | `neia-boiz` | | members pages shared with "NEIA Boiz" |
 
-The site is static and the `production` dataset is public, so gated content can't live there.
-Instead:
+The site is static, so gated content can't be prerendered into it. Instead:
 
 ```
 browser ──login──▶ Cognito (user pool, one group per role)
    │
-   └──GET /pages/<slug> + access token──▶ API Gateway (verifies the token)
-                                              └──▶ Lambda ──read token──▶ Sanity "private" dataset
-                                                    (filters by the user's groups)
+   └──GET /members/pages/<slug> + access token──▶ content API (verifies the token,
+                                                    filters by the user's groups)
 ```
 
 - **Accounts are invite-only.** Self sign-up is disabled; you create users in the Cognito console.
-- **Content** is edited in the Studio's **"Members only (private)"** workspace (switch workspaces top-left).
-  Each *Members page* has a **"Who can see this?"** checklist. Leave it empty for admin-only.
+- **Content:** each members page lists the groups that can see it (its *audiences*). Leave it empty for admin-only.
 - **Roles** are defined in `web/src/app/core/auth/roles.ts`. To add one, add it there, to `groups` in
   `web/amplify/auth/resource.ts` and to `AUDIENCES` in `studio/schemaTypes/documents/memberPage.ts`, then redeploy.
-- **Gating custom features:** for an Angular page that isn't a Sanity members page, protect the route with
+- **Gating custom features:** for an Angular page that isn't a members page, protect the route with
   `canActivate: [requireRole('wife')]` (admins always pass). The guard only hides navigation,
   so any private *data* behind it must come from the members API (`web/amplify/`), never from the
-  public dataset or the bundle.
-- Images uploaded to the private dataset are served from Sanity's CDN at unguessable but public URLs.
+  public content API or the bundle.
+- Images on members pages are served by the content API at unguessable but public URLs.
 
 ### One-time setup
 
-1. **Create the private dataset and a read token:**
-   ```sh
-   cd studio
-   npx sanity dataset create private --visibility private
-   ```
-   In https://www.sanity.io/manage go to **API → Tokens → Add API token** and create a **Viewer** token.
-2. **Deploy the backend.** Locally, with AWS credentials configured (`aws configure` or `aws sso login`):
+1. **Deploy the backend.** Locally, with AWS credentials configured (`aws configure` or `aws sso login`):
    ```sh
    cd web
-   npx ampx sandbox secret set SANITY_PRIVATE_READ_TOKEN   # paste the Viewer token
+   npx ampx sandbox secret set CONTENT_API_URL             # see "Family finances"
+   npx ampx sandbox secret set CONTENT_API_SERVICE_TOKEN
    npx ampx sandbox --outputs-out-dir public                # deploys a personal sandbox and watches for changes
    ```
    `ng serve` now has login. Without a sandbox the site still runs, and "Log in" just doesn't show.
-3. **Production (Amplify Hosting):**
-   - In **Hosting → Secrets**, add `SANITY_PRIVATE_READ_TOKEN` (the Viewer token).
+   For members pages locally, set `COGNITO_USER_POOL_ID` and `COGNITO_CLIENT_ID` in `api/.env` to the
+   sandbox's pool (`auth.user_pool_id` and `auth.user_pool_client_id` in `web/public/amplify_outputs.json`).
+2. **Production (Amplify Hosting):**
    - Make sure the app's service role has the **AmplifyBackendDeployFullAccess** policy.
    - Members URLs are never prerendered, so they must load `/index.csr.html` with a 200.
      A catch-all `/<*>` → `/index.csr.html` rule with type `404-200` already does this. If your
@@ -139,7 +120,7 @@ browser ──login──▶ Cognito (user pool, one group per role)
      | `/members/<*>` | `/index.csr.html` | `200 (Rewrite)` |
 
    The next push builds the backend (`amplify.yml` runs `ampx pipeline-deploy`) before the site.
-4. **Create your admin account:** in the AWS console open **Cognito → User pools →** the `amplifyAuthUserPool…`
+3. **Create your admin account:** in the AWS console open **Cognito → User pools →** the `amplifyAuthUserPool…`
    pool → **Users → Create user**. Enter your email, choose **Send an email invitation**, then open the
    user and **Add user to group → admin**. On first login you'll be asked to set a new password.
    Do the same for anyone else with the `wife` or `neia-boiz` group.
@@ -167,9 +148,10 @@ Each statement counts as a whole toward the month it closes in (Jan 2 – Feb 1 
 Each transaction gets the category whose longest merchant pattern it contains. When you pick a category
 for a new merchant and leave **Remember** ticked, the pattern is added to the plan for later uploads.
 
-**Setup:** in https://www.sanity.io/manage create an **Editor** API token, then add it as the Amplify secret
-`SANITY_PRIVATE_WRITE_TOKEN`. Do this before deploying, because the backend build fails without it.
-For a sandbox, use `npx ampx sandbox secret set SANITY_PRIVATE_WRITE_TOKEN`.
+**Setup:** the `finances` Lambda reads the plan from the content API with a shared service token.
+Add two Amplify secrets for the branch: `CONTENT_API_URL` (that environment's content API, e.g.
+`https://api.neiaboiz.com`) and `CONTENT_API_SERVICE_TOKEN` (the API's `SERVICE_TOKEN`). Do this before
+deploying, because the backend build fails without them. For a sandbox, use `npx ampx sandbox secret set …`.
 
 ## NEIA Boiz events
 
@@ -231,12 +213,11 @@ For a sandbox, use `npx ampx sandbox secret set SANITY_PRIVATE_WRITE_TOKEN`.
 | `npm run dev:web` / `dev:studio` | Start the website / Studio dev servers |
 | `npm run build:web` | Prerender the site to `web/dist/web/browser` |
 | `npm test` | Run the Angular unit tests (Vitest) |
-| `npm run typegen` | Regenerate TypeScript types from the schemas and GROQ queries |
 | `npm run deploy:studio` | Deploy the Studio to `https://<name>.sanity.studio` |
 
-## 3. Deploy
+## Deploy
 
-### Studio
+### Studio (old editor, until the admin pages replace it)
 
 ```sh
 npm run deploy:studio
@@ -250,26 +231,17 @@ Add that URL as a CORS origin with credentials: `npx sanity cors add https://you
 1. Push this repo to GitHub, GitLab, Bitbucket or CodeCommit.
 2. In the AWS Amplify console, choose **Create new app**, pick the repo and branch, and tick **"My app is a monorepo"** with root `web`.
    Amplify picks up `amplify.yml` automatically.
-3. Under **Hosting → Rewrites and redirects**, add a rule so unknown URLs get the client-side 404 page:
+3. Under **Hosting → Environment variables**, set `CONTENT_API_URL` for the branch to its content API.
+   The build prerenders from it and fails if it's missing or unreachable. The API's `CORS_ORIGINS`
+   must include the site's domain(s).
+4. Under **Hosting → Rewrites and redirects**, add a rule so unknown URLs get the client-side 404 page:
 
    | Source | Target | Type |
    |---|---|---|
    | `/<*>` | `/index.csr.html` | `404 (Rewrite)` |
 
-4. Add your production domain as a Sanity CORS origin:
-   `npx sanity cors add https://your-domain.com --no-credentials`.
 
-### Rebuild when content is published
+### Rebuild when content changes
 
-The site is static, so content changes go live on the next build.
-To rebuild automatically on publish:
-
-1. In Amplify, go to **Hosting → Build settings → Incoming webhooks**, create a webhook for your branch and copy its URL.
-2. In https://www.sanity.io/manage, go to **API → Webhooks → Create webhook** and set:
-   - **URL:** the Amplify webhook URL
-   - **Dataset:** `production`
-   - **Trigger on:** Create, Update, Delete
-   - **Filter:** `_type in ["page", "post", "project", "siteSettings"]`
-   - **HTTP method:** POST
-
-Publishing in the Studio now redeploys the site in a couple of minutes.
+The site is static, so content changes go live on the next build. After importing content into a
+branch's content API, start a build in Amplify (**Redeploy this version** on the latest build).

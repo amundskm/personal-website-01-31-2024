@@ -6,9 +6,10 @@ class Image < ApplicationRecord
 
   # The only sizes served, so requests can't make unlimited variants. These are
   # what web/src/app/shared/sanity-image uses: its srcset candidates, the
-  # widths components display at, and the aspect ratios they crop to.
+  # widths components display at, and the aspect ratios they crop to (plus
+  # 1200×630 for social share cards). Keep in sync with web/src/app/core/image.ts.
   WIDTHS = [320, 480, 640, 720, 800, 1024, 1200, 1280, 1600, 1920, 2000, 2400].freeze
-  ASPECT_RATIOS = [16.0 / 9, 2.0, 4.0 / 3].freeze
+  ASPECT_RATIOS = [16.0 / 9, 2.0, 4.0 / 3, 1200.0 / 630].freeze
 
   has_one_attached :file
 

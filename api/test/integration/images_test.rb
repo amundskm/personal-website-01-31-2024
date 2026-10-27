@@ -47,4 +47,14 @@ class ImagesTest < ActionDispatch::IntegrationTest
     get "/images/image-nope"
     assert_response :not_found
   end
+
+  test "allows exactly the sizes the site asks for" do
+    assert Image.allowed_size?(1200, 630), "social share card"
+    assert Image.allowed_size?(800, 450), "16:9"
+    assert Image.allowed_size?(1200, 600), "2:1"
+    assert Image.allowed_size?(720, 540), "4:3"
+    assert Image.allowed_size?(2400, nil)
+    assert_not Image.allowed_size?(1200, 631)
+    assert_not Image.allowed_size?(3000, nil)
+  end
 end
