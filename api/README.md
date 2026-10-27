@@ -1,6 +1,6 @@
 # API
 
-Rails API that serves the website's content (replacing Sanity): pages, posts,
+Rails API that serves the website's content (it replaced Sanity): pages, posts,
 projects, site settings, members-only pages and the spending plan, plus images.
 Responses keep the shapes the old GROQ queries returned, so the Angular
 components didn't need to change.
@@ -15,11 +15,12 @@ docker compose up              # Postgres + API on http://localhost:3000
 docker compose run --rm api bin/rails test
 ```
 
-Load content from a Sanity export (`db/import/` is git-ignored):
+Load the sample content, or an old Sanity export (`db/import/` is git-ignored; Sanity itself
+is no longer used, but its export format is how the content was moved here):
 
 ```sh
+docker compose run --rm api bin/rails "sanity:import[test/fixtures/files/sample-content.ndjson]"
 docker compose run --rm api bin/rails "sanity:import[db/import/production]"   # extracted export dir
-docker compose run --rm api bin/rails "sanity:import[db/import/sample.ndjson]" # or a bare .ndjson
 ```
 
 ## Endpoints
@@ -109,7 +110,6 @@ Amplify `qa` branch. It costs about a cent an hour while it exists.
 ```sh
 aws login
 bin/qa-up                                   # copy of production's data and images, then builds the QA site
-bin/qa-up --from-sanity db/import/x-production/<dir> db/import/x-private/<dir>
 bin/kamal deploy -d qa                      # deploy changes to it
 bin/qa-down                                 # delete the box and its DNS record
 ```
