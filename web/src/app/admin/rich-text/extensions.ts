@@ -1,5 +1,7 @@
 import { Extension, type Extensions, Node } from '@tiptap/core';
+import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import StarterKit from '@tiptap/starter-kit';
+import { newKey } from '../schema';
 
 /**
  * The editor's schema: what Portable Text can hold (see blockContent in the
@@ -26,6 +28,45 @@ const PortableTextAttributes = Extension.create({
         },
       },
       { types: ['link'], attributes: { ptKey: { default: null, rendered: false } } },
+    ];
+  },
+});
+
+/** Blocks whose Portable Text `_key` is a node attribute; atoms keep it in `data`. */
+const KEYED = new Set(['paragraph', 'heading', 'codeBlock']);
+const ATOMS = new Set(['ptImage', 'ptUnknown']);
+
+/**
+ * Gives every block a key as soon as it exists (new paragraphs, split ones,
+ * inserted images), so keys stay the same from one change to the next.
+ */
+const StableKeys = Extension.create({
+  name: 'portableTextKeys',
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey('portableTextKeys'),
+        appendTransaction: (transactions, _old, state) => {
+          if (!transactions.some((tr) => tr.docChanged)) return null;
+          const seen = new Set<string>();
+          let tr: Transaction | null = null;
+          const fresh = (key: unknown) => typeof key !== 'string' || !key || seen.has(key);
+          state.doc.descendants((node, pos) => {
+            if (KEYED.has(node.type.name)) {
+              let key = node.attrs['ptKey'];
+              if (fresh(key)) (tr ??= state.tr).setNodeAttribute(pos, 'ptKey', (key = newKey()));
+              seen.add(key);
+            } else if (ATOMS.has(node.type.name)) {
+              const data = (node.attrs['data'] ?? {}) as Record<string, unknown>;
+              let key = data['_key'];
+              if (fresh(key)) (tr ??= state.tr).setNodeAttribute(pos, 'data', { ...data, _key: (key = newKey()) });
+              seen.add(key as string);
+            }
+          });
+          // Keys aren't an edit: keep them out of undo
+          return tr ? (tr as Transaction).setMeta('addToHistory', false) : null;
+        },
+      }),
     ];
   },
 });
@@ -103,6 +144,7 @@ export function richTextExtensions(options: RichTextOptions): Extensions {
       },
     }),
     PortableTextAttributes,
+    StableKeys,
     PtImage,
     PtUnknown,
   ];

@@ -153,7 +153,11 @@ export class RichTextField {
 
   private readonly content = viewChild.required<ElementRef<HTMLElement>>('content');
   private editor: Editor | null = null;
-  /** The value this editor last emitted, so its own changes aren't loaded back in. */
+  /**
+   * The content this editor last emitted (canonical JSON), so its own changes,
+   * and the same content saved and reloaded, aren't loaded back in: that would
+   * reset the cursor and drop an empty line you're about to type on.
+   */
   private lastEmitted: string | null = null;
 
   protected readonly languages = LANGUAGES;
@@ -175,14 +179,14 @@ export class RichTextField {
         onFocus: () => this.focused.set(true),
         onBlur: () => this.focused.set(false),
       });
-      this.lastEmitted = JSON.stringify(this.blocks());
+      this.lastEmitted = canonical(this.blocks());
     });
 
     // Load the value when it changes from outside (e.g. a discarded draft)
     effect(() => {
       const blocks = this.blocks();
-      if (!this.editor || JSON.stringify(blocks) === this.lastEmitted) return;
-      this.lastEmitted = JSON.stringify(blocks);
+      if (!this.editor || canonical(blocks) === this.lastEmitted) return;
+      this.lastEmitted = canonical(blocks);
       this.editor.commands.setContent(toDoc(blocks), { emitUpdate: false });
     });
 
@@ -196,7 +200,7 @@ export class RichTextField {
 
   private emit(editor: Editor): void {
     const blocks = fromDoc(editor.getJSON() as PmNode) as Json[];
-    this.lastEmitted = JSON.stringify(blocks);
+    this.lastEmitted = canonical(blocks);
     this.valueChange.emit(blocks.length ? blocks : undefined);
   }
 
@@ -258,6 +262,18 @@ export class RichTextField {
   protected updateCode(name: 'language' | 'filename', value: string): void {
     this.editor?.commands.updateAttributes('codeBlock', { [name]: value.trim() || null });
   }
+}
+
+/**
+ * JSON with object keys sorted: equal for the same content however it was
+ * serialized (Postgres returns saved JSON with its keys reordered).
+ */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, item: unknown) =>
+    item && typeof item === 'object' && !Array.isArray(item)
+      ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : item,
+  );
 }
 
 function readState(editor: Editor): SelectionState {

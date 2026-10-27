@@ -112,4 +112,36 @@ describe('RichTextField', () => {
     editor().commands.clearContent(true);
     expect(last()).toBeUndefined();
   });
+
+  it('keeps block keys from one change to the next', async () => {
+    const { editor, emitted } = await render([]);
+    editor().commands.insertContent('One');
+    editor().commands.splitBlock();
+    editor().commands.insertContent('Two');
+    editor().commands.insertContent('!');
+    const keys = (value: Json[] | undefined) => (value as { _key: string }[]).map((b) => b._key);
+    const [before, after] = emitted.slice(-2);
+    expect(keys(after)).toEqual(keys(before));
+    expect(new Set(keys(after)).size).toBe(2);
+  });
+
+  it('does not reload the same content saved back with its keys reordered', async () => {
+    const { fixture, editor, last } = await render([paragraph('a', 'First line')]);
+    editor().commands.setTextSelection(11);
+    editor().commands.splitBlock(); // An empty line to type on next
+    // A save returns the same content with Postgres's key order
+    const reorder = (v: unknown): unknown =>
+      Array.isArray(v)
+        ? v.map(reorder)
+        : v && typeof v === 'object'
+          ? Object.fromEntries(Object.entries(v).reverse().map(([k, x]) => [k, reorder(x)]))
+          : v;
+    fixture.componentRef.setInput('value', reorder(last()));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(editor().getJSON().content!.length).toBe(2);
+    expect(editor().state.selection.$from.parent.textContent).toBe('');
+    expect(editor().state.selection.$from.index(0)).toBe(1);
+  });
 });
