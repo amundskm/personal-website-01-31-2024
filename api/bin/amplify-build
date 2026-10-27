@@ -11,7 +11,7 @@ aws() { command aws --region us-east-2 "$@"; }
 status() { aws amplify get-job --app-id "$APP" --branch-name "$BRANCH" --job-id "$1" --query job.summary.status --output text; }
 
 # One build at a time per branch: let a running one finish first
-latest=$(aws amplify list-jobs --app-id "$APP" --branch-name "$BRANCH" --max-items 1 --query 'jobSummaries[0].jobId' --output text)
+latest=$(aws amplify list-jobs --app-id "$APP" --branch-name "$BRANCH" --max-results 1 --no-paginate --query 'jobSummaries[0].jobId' --output text)
 if [ -n "$latest" ] && [ "$latest" != None ]; then
   while case $(status "$latest") in PENDING | PROVISIONING | RUNNING | CANCELLING) true ;; *) false ;; esac; do
     echo "Waiting for build $latest of $BRANCH to finish…"
