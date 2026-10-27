@@ -228,26 +228,32 @@ deploying, because the backend build fails without them. For a sandbox, use `npx
 
 ### Release pipeline
 
-Everything reaches the live site through QA:
+Everything reaches the live site through QA, and releases need your approval:
 
 ```
-feature branch ──PR──▶ qa ──▶ QA environment ──PR──▶ main ──▶ live, then QA shuts down
+PR into qa ──merge──▶ Deploy QA ──▶ Approve release ──▶ qa merged into main ──▶ live, then QA shuts down
 ```
 
-1. **Start every branch from `qa`** (`git switch -c my-change origin/qa`) **and open its pull request into `qa`.** CI (`.github/workflows/ci.yml`) runs the Angular and Rails
-   tests; they must pass to merge.
+1. **Start every branch from `qa`** (`git switch -c my-change origin/qa`) **and open its pull request
+   into `qa`.** CI (`.github/workflows/ci.yml`) runs the Angular and Rails tests; they must pass, and
+   the branch must be up to date with `qa`, to merge.
 2. **Merging into `qa` starts QA** (`qa.yml`): the QA content API on its temporary Lightsail box
    (a new box starts with production's latest backup and images), then a build of the
    password-protected QA site. Test there.
-3. **Open a pull request from `qa` into `main`.** It can only merge when the source is `qa`, the
-   tests pass and the "Deploy QA" run for that commit succeeded. Use **Create a merge commit**.
-4. **Merging into `main` releases it** (`production.yml`): it checks that `main` matches what QA
+3. **Approve the release.** The same run then waits at **Approve release**: open it under
+   **Actions → QA**, choose **Review deployments**, tick `release` and **Approve and deploy**.
+   It merges exactly the commit QA ran into `main`. A newer merge into `qa` replaces a release
+   still waiting, so you always approve what's on the QA site. Don't approve to skip a release:
+   leave it, or **Reject** it.
+4. **The merge into `main` releases it** (`production.yml`): it checks that `main` matches what QA
    ran, deploys the content API, builds the live site (Amplify's automatic build for `main` is
-   off, so the site always builds against the new API), and then deletes the QA box.
+   off, so the site always builds against the new API), and then deletes the QA box. If a step
+   fails, QA stays up; the run's log says which step failed, and **Re-run failed jobs** retries.
 
-Rulesets on `qa` and `main` enforce this for everyone, admins included. In an emergency, turn a
-ruleset off under **Settings → Rules → Rulesets**, and back on afterwards. If a release fails, QA
-stays up so you can look into it; the run's log says which step failed.
+Rulesets enforce this for everyone, admins included: `qa` and `main` can't be deleted or
+force-pushed, `qa` only changes through tested pull requests, and `main` only through the approved
+release, which pushes with the `release` environment's deploy key (the only bypass). In an
+emergency, turn a ruleset off under **Settings → Rules → Rulesets**, and back on afterwards.
 
 The workflows sign in to AWS through GitHub's OIDC provider as `github-personal-website-qa` or
 `github-personal-website-production`, IAM roles that only trust their GitHub environment (`qa`
