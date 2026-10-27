@@ -16,7 +16,15 @@ async function render(value?: Json) {
   TestBed.configureTestingModule({
     providers: [
       EditorContext,
-      { provide: AdminApi, useValue: { linkTargets: async () => [], images: async () => [] } },
+      {
+        provide: AdminApi,
+        useValue: {
+          linkTargets: async () => [],
+          images: async () => [
+            { id: 'image-tree', thumbnailUrl: 'https://api.example.com/images/image-tree?s=x&w=320', width: 4, height: 3, filename: 'tree.jpg' },
+          ],
+        },
+      },
     ],
   });
   const fixture = TestBed.createComponent(RichTextField);
@@ -66,36 +74,108 @@ describe('RichTextField', () => {
     ]);
   });
 
-  it('adds links, refusing unsafe URLs', async () => {
+  /** The open dialog's inputs and buttons. */
+  function dialog(el: HTMLElement, selector: string) {
+    const d = el.querySelector<HTMLDialogElement>(selector)!;
+    return {
+      open: () => d.hasAttribute('open'),
+      input: (id: string) => d.querySelector<HTMLInputElement>(`#${id}`)!,
+      button: (text: string) => [...d.querySelectorAll('button')].find((b) => b.textContent!.trim() === text)!,
+      element: d,
+    };
+  }
+
+  it('links selected text from the dialog, refusing unsafe URLs', async () => {
     const { fixture, el, editor, button, last } = await render([paragraph('a', 'Read more')]);
     editor().commands.setTextSelection({ from: 1, to: 10 });
     button('Link').click();
     fixture.detectChanges();
-    const href = el.querySelector<HTMLInputElement>('.rt-panel input[type=text]')!;
-    const apply = () => el.querySelector<HTMLFormElement>('.rt-panel')!.dispatchEvent(new Event('submit'));
+    const link = dialog(el, 'app-link-dialog dialog');
+    expect(link.open()).toBe(true);
+    expect(link.input('link-dialog-text').value).toBe('Read more');
 
-    href.value = 'javascript:alert(1)';
-    apply();
+    link.input('link-dialog-url').value = 'javascript:alert(1)';
+    link.button('Add link').click();
     fixture.detectChanges();
-    expect(el.querySelector('.rt-panel [role=alert]')!.textContent).toContain('Use a full URL');
+    expect(link.element.querySelector('[role=alert]')!.textContent).toContain('full address');
+    expect(link.open()).toBe(true);
 
-    href.value = 'https://example.com';
-    el.querySelector<HTMLInputElement>('.rt-panel input[type=checkbox]')!.checked = true;
-    apply();
+    link.input('link-dialog-url').value = 'https://example.com';
+    (link.element.querySelector('input[type=checkbox]') as HTMLInputElement).checked = true;
+    link.button('Add link').click();
     fixture.detectChanges();
-    const [block] = last() as { markDefs: object[]; children: { marks: string[] }[] }[];
+    const [block] = last() as { markDefs: object[]; children: { text: string; marks: string[] }[] }[];
     expect(block.markDefs).toEqual([
       expect.objectContaining({ _type: 'link', href: 'https://example.com', openInNewTab: true }),
     ]);
-    expect(el.querySelector('.rt-panel')).toBeNull();
+    expect(block.children.map((s) => s.text)).toEqual(['Read more']);
+    expect(link.open()).toBe(false);
   });
 
-  it('inserts an image and edits it in the panel', async () => {
-    const { fixture, el, last } = await render([paragraph('a', 'Text')]);
-    el.querySelector<HTMLButtonElement>('button[title="Insert image"]')!.click();
+  it('inserts linked text when nothing is selected', async () => {
+    const { fixture, el, editor, button, last } = await render([paragraph('a', 'See ')]);
+    editor().commands.setTextSelection(5);
+    button('Link').click();
     fixture.detectChanges();
-    expect(el.querySelector('.rt-panel app-image-field')).not.toBeNull();
-    expect(last()).toContainEqual(expect.objectContaining({ _type: 'accessibleImage' }));
+    const link = dialog(el, 'app-link-dialog dialog');
+    expect(link.input('link-dialog-text').value).toBe('');
+    link.input('link-dialog-text').value = 'my about page';
+    link.input('link-dialog-url').value = '/about';
+    link.button('Add link').click();
+    const [block] = last() as { markDefs: { _key: string; href: string }[]; children: { text: string; marks: string[] }[] }[];
+    expect(block.children.map((s) => [s.text, s.marks.length])).toEqual([
+      ['See ', 0],
+      ['my about page', 1],
+    ]);
+    expect(block.markDefs[0].href).toBe('/about');
+  });
+
+  it('edits and removes an existing link', async () => {
+    const linked = {
+      ...paragraph('a', 'Docs', ['l1']),
+      markDefs: [{ _type: 'link', _key: 'l1', href: 'https://old.example.com' }],
+    };
+    const { fixture, el, editor, button, last } = await render([linked]);
+    editor().commands.setTextSelection(2); // Inside the link, nothing selected
+    button('Link').click();
+    fixture.detectChanges();
+    const link = dialog(el, 'app-link-dialog dialog');
+    expect(link.input('link-dialog-text').value).toBe('Docs');
+    expect(link.input('link-dialog-url').value).toBe('https://old.example.com');
+
+    link.button('Remove link').click();
+    const [block] = last() as { markDefs: object[]; children: { text: string; marks: string[] }[] }[];
+    expect(block.children).toEqual([expect.objectContaining({ text: 'Docs', marks: [] })]);
+  });
+
+  it('adds an image picked in the dialog and shows its alt text and caption', async () => {
+    const { fixture, el, button, last } = await render([paragraph('a', 'Text')]);
+    button('Insert image').click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const picker = dialog(el, 'app-image-picker-dialog dialog');
+    expect(picker.open()).toBe(true);
+    expect(last()).toBeUndefined(); // Nothing added until an image is chosen
+
+    picker.element.querySelector<HTMLButtonElement>('.adm-library__item')!.click();
+    fixture.detectChanges();
+    expect(picker.open()).toBe(false);
+    expect(last()).toContainEqual(
+      expect.objectContaining({ _type: 'accessibleImage', asset: { _type: 'reference', _ref: 'image-tree' } }),
+    );
+    expect(el.querySelector('.rt-panel[aria-label="Selected image"] app-image-field')).not.toBeNull();
+  });
+
+  it('adds nothing when the image dialog is cancelled', async () => {
+    const { fixture, el, button, emitted } = await render([paragraph('a', 'Text')]);
+    button('Insert image').click();
+    fixture.detectChanges();
+    const picker = dialog(el, 'app-image-picker-dialog dialog');
+    picker.button('Cancel').click();
+    fixture.detectChanges();
+    expect(picker.open()).toBe(false);
+    expect(emitted).toEqual([]);
   });
 
   it('loads a new value from outside, e.g. a discarded draft', async () => {

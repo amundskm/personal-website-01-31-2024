@@ -14,6 +14,7 @@ import {
   withField,
 } from '../schema';
 import { ImageField } from './image-field';
+import { ImagePickerDialog } from './image-picker-dialog';
 import { ReferenceSelect } from './reference-select';
 import { RichTextField } from './rich-text-field';
 import { TagsField } from './tags-field';
@@ -25,7 +26,7 @@ import { TagsField } from './tags-field';
  */
 @Component({
   selector: 'app-admin-field',
-  imports: [NgTemplateOutlet, ImageField, ReferenceSelect, RichTextField, TagsField],
+  imports: [NgTemplateOutlet, ImageField, ImagePickerDialog, ReferenceSelect, RichTextField, TagsField],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let f = field();
@@ -144,8 +145,8 @@ import { TagsField } from './tags-field';
                   </li>
                 }
               </ol>
-              <button type="button" class="btn btn--secondary adm-btn-sm"
-                (click)="append({ _key: newKey(), _type: 'accessibleImage' })">Add image</button>
+              <button type="button" class="btn btn--secondary adm-btn-sm" (click)="galleryPicker.show()">Add image</button>
+              <app-image-picker-dialog #galleryPicker (picked)="addImage($event)" />
             }
             @case ('list') {
               <ng-container *ngTemplateOutlet="items; context: { types: [asField('list').of] }" />
@@ -317,6 +318,11 @@ export class AdminField {
     const item = newObject(type);
     this.opened.set(new Set(this.opened()).add(item['_key'] as string));
     this.append(item);
+  }
+
+  /** Adds a picked image to a gallery. */
+  protected addImage(image: JsonObject): void {
+    this.append({ _key: newKey(), _type: 'accessibleImage', ...image });
   }
 
   protected append(item: Json): void {

@@ -68,6 +68,13 @@
   }
 }
 
+.rt-panel__title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-muted);
+}
+
 .rt-content {
   min-height: 8rem;
   max-width: none;

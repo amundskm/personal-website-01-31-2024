@@ -18,6 +18,8 @@ import { richTextExtensions } from '../rich-text/extensions';
 import { fromDoc, type PmNode, toDoc } from '../rich-text/portable-text-doc';
 import type { Json, JsonObject } from '../schema';
 import { ImageField } from './image-field';
+import { ImagePickerDialog } from './image-picker-dialog';
+import { LinkDialog, type LinkValue } from './link-dialog';
 
 /** Languages offered for code blocks (as in the old Studio). */
 const LANGUAGES = [
@@ -67,7 +69,7 @@ const EMPTY_STATE: SelectionState = {
  */
 @Component({
   selector: 'app-rich-text-field',
-  imports: [ImageField],
+  imports: [ImageField, ImagePickerDialog, LinkDialog],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './rich-text-field.scss',
   template: `
@@ -90,35 +92,16 @@ const EMPTY_STATE: SelectionState = {
         <button type="button" title="Numbered list" [attr.aria-pressed]="state().orderedList" (click)="run((c) => c.toggleOrderedList())">1. List</button>
         <button type="button" title="Quote" [attr.aria-pressed]="state().blockquote" (click)="run((c) => c.toggleBlockquote())">Quote</button>
         <span class="rt-sep"></span>
-        <button type="button" title="Insert image" (click)="insertImage()">Image</button>
+        <button type="button" title="Insert image" (click)="openImagePicker()">Image</button>
         <button type="button" title="Code block" [attr.aria-pressed]="!!state().code" (click)="run((c) => c.toggleCodeBlock())">Code block</button>
         <span class="rt-sep"></span>
         <button type="button" title="Undo (Ctrl+Z)" (click)="run((c) => c.undo())" aria-label="Undo">↶</button>
         <button type="button" title="Redo (Ctrl+Shift+Z)" (click)="run((c) => c.redo())" aria-label="Redo">↷</button>
       </div>
 
-      @if (linkOpen()) {
-        <form class="rt-panel" (submit)="$event.preventDefault(); applyLink(href.value, newTab.checked)">
-          <label class="adm-field">
-            <span>Link to</span>
-            <input #href type="text" [value]="linkHref()" placeholder="https://…, /about, mailto:…" autofocus />
-          </label>
-          <label class="adm-check"><input #newTab type="checkbox" [checked]="linkNewTab()" /> Open in a new tab</label>
-          @if (linkError(); as message) {
-            <p class="adm-error" role="alert">{{ message }}</p>
-          }
-          <div class="button-row">
-            <button type="submit" class="btn btn--secondary adm-btn-sm">Apply</button>
-            @if (state().marks.link) {
-              <button type="button" class="btn btn--text" (click)="removeLink()">Remove link</button>
-            }
-            <button type="button" class="btn btn--text" (click)="linkOpen.set(false)">Cancel</button>
-          </div>
-        </form>
-      }
-
       @if (state().image; as image) {
-        <div class="rt-panel">
+        <div class="rt-panel" aria-label="Selected image">
+          <p class="rt-panel__title">Selected image</p>
           <app-image-field [value]="image" [caption]="true" (valueChange)="updateImage($event)" />
         </div>
       }
@@ -143,6 +126,9 @@ const EMPTY_STATE: SelectionState = {
 
       <div #content class="rt-content prose"></div>
     </div>
+
+    <app-link-dialog #linkDialog (applied)="applyLink($event)" (removed)="removeLink()" />
+    <app-image-picker-dialog #imagePicker (picked)="insertImage($event)" />
   `,
 })
 export class RichTextField {
@@ -163,10 +149,12 @@ export class RichTextField {
   protected readonly languages = LANGUAGES;
   protected readonly state = signal<SelectionState>(EMPTY_STATE);
   protected readonly focused = signal(false);
-  protected readonly linkOpen = signal(false);
-  protected readonly linkHref = signal('');
-  protected readonly linkNewTab = signal(false);
-  protected readonly linkError = signal<string | null>(null);
+  private readonly linkDialog = viewChild.required(LinkDialog);
+  private readonly imagePicker = viewChild.required(ImagePickerDialog);
+  /** What the open link dialog applies to: the selection, or the link being edited. */
+  private linkRange = { from: 0, to: 0 };
+  /** Where the image being picked goes: after the block the cursor was in. */
+  private imagePosition = 0;
 
   constructor() {
     afterNextRender(() => {
@@ -213,42 +201,66 @@ export class RichTextField {
     this.run((c) => (style === 'paragraph' ? c.setParagraph() : c.setHeading({ level: Number(style.slice(1)) as 2 | 3 | 4 })));
   }
 
+  /**
+   * Opens the link dialog for the selected text, or for the whole link when
+   * the cursor is in one. With nothing selected, the dialog's text is inserted.
+   */
   protected openLink(): void {
-    const attrs = this.editor?.getAttributes('link') ?? {};
-    this.linkHref.set(attrs['href'] ?? '');
-    this.linkNewTab.set(attrs['target'] === '_blank');
-    this.linkError.set(null);
-    this.linkOpen.set(true);
+    const editor = this.editor;
+    if (!editor) return;
+    const editing = editor.isActive('link');
+    if (editing) editor.commands.extendMarkRange('link');
+    const { from, to } = editor.state.selection;
+    this.linkRange = { from, to };
+    const attrs = editor.getAttributes('link');
+    this.linkDialog().show(
+      {
+        text: editor.state.doc.textBetween(from, to, ' '),
+        href: editing ? (attrs['href'] ?? '') : '',
+        newTab: editing && attrs['target'] === '_blank',
+      },
+      editing,
+    );
   }
 
-  protected applyLink(href: string, newTab: boolean): void {
-    href = href.trim();
-    if (!/^(https?:\/\/|mailto:|tel:|\/)/i.test(href)) {
-      this.linkError.set('Use a full URL (https://…), a path on this site (/about), mailto: or tel:.');
-      return;
+  protected applyLink({ text, href, newTab }: LinkValue): void {
+    const editor = this.editor;
+    if (!editor) return;
+    const { from, to } = this.linkRange;
+    const link = { href, target: newTab ? '_blank' : null };
+    const unchanged = from < to && editor.state.doc.textBetween(from, to, ' ') === text;
+    const chain = editor.chain().focus();
+    if (unchanged) {
+      // Same text: keep its other formatting and just link it
+      chain.setTextSelection({ from, to }).setLink(link);
+    } else {
+      chain.insertContentAt({ from, to }, { type: 'text', text, marks: [{ type: 'link', attrs: link }] });
     }
-    this.run((c) => c.extendMarkRange('link').setLink({ href, target: newTab ? '_blank' : null }));
-    this.linkOpen.set(false);
+    // Carry on typing after the link, not inside it
+    chain.setTextSelection(from + text.length).unsetMark('link').run();
   }
 
   protected removeLink(): void {
-    this.run((c) => c.extendMarkRange('link').unsetLink());
-    this.linkOpen.set(false);
+    const { from, to } = this.linkRange;
+    this.editor?.chain().focus().setTextSelection({ from, to }).unsetLink().run();
   }
 
-  /**
-   * Adds an empty image after the current block (images aren't inline, so the
-   * text isn't split) and selects it, which opens the image panel.
-   */
-  protected insertImage(): void {
+  /** Opens the image dialog; the image goes after the block the cursor is in. */
+  protected openImagePicker(): void {
     const editor = this.editor;
     if (!editor) return;
     const { selection } = editor.state;
-    const pos = selection.$from.depth ? selection.$from.after(1) : selection.to;
-    editor
-      .chain()
+    this.imagePosition = selection.$from.depth ? selection.$from.after(1) : selection.to;
+    this.imagePicker().show();
+  }
+
+  /** Adds the chosen image and selects it, which shows its alt text and caption. */
+  protected insertImage(image: JsonObject): void {
+    const pos = Math.min(this.imagePosition, this.editor?.state.doc.content.size ?? 0);
+    this.editor
+      ?.chain()
       .focus()
-      .insertContentAt(pos, { type: 'ptImage', attrs: { data: { _type: 'accessibleImage' } } })
+      .insertContentAt(pos, { type: 'ptImage', attrs: { data: { _type: 'accessibleImage', ...image } } })
       .setNodeSelection(pos)
       .run();
   }

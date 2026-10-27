@@ -1,4 +1,14 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, output, resource, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  linkedSignal,
+  output,
+  resource,
+  signal,
+} from '@angular/core';
 import { AdminApi, type ImageSummary } from '../admin-api';
 import { EditorContext } from '../editor-context';
 import { asObject, type JsonObject, withField } from '../schema';
@@ -105,11 +115,13 @@ export class ImageField {
   readonly value = input<JsonObject | undefined>();
   /** Whether the usage has a caption (accessible images) or only alt text. */
   readonly caption = input(false);
+  /** Show the library straight away (when picking a new image in a dialog). */
+  readonly openLibrary = input(false);
   readonly valueChange = output<JsonObject | undefined>();
 
   protected readonly uploading = signal(false);
   protected readonly error = signal<string | null>(null);
-  protected readonly libraryOpen = signal(false);
+  protected readonly libraryOpen = linkedSignal(() => this.openLibrary());
 
   protected readonly library = resource({
     params: () => (this.libraryOpen() ? {} : undefined),
