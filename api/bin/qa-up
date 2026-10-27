@@ -51,6 +51,12 @@ bin/kamal setup -d qa
 if bin/kamal app exec -d qa --reuse "bin/rails runner 'exit(Page.none?)'" >/dev/null 2>&1; then
   echo "Loading production's latest backup…"
   bin/kamal app exec -d qa --reuse "bin/backup restore latest production"
+  if bin/kamal app exec -d qa --reuse "bin/rails runner 'exit(Page.none?)'" >/dev/null 2>&1; then
+    echo "Production's latest backup has no pages, so the QA site would be empty. Take a fresh one with" >&2
+    echo "  bin/kamal app exec -d production --reuse \"bin/backup dump\"" >&2
+    echo "then re-run this workflow (or bin/qa-up)." >&2
+    exit 1
+  fi
 fi
 
 bin/amplify-build qa
