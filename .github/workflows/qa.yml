@@ -1,6 +1,7 @@
 # Every merge into qa starts (or updates) the QA environment: the QA content
 # API on its temporary Lightsail box, then a build of the password-protected
-# QA site. Test there, then open a pull request from qa into main.
+# QA site. The run then waits for approval ("Approve release"): approving
+# merges qa into main, which starts the production release (production.yml).
 name: QA
 
 on:
@@ -12,15 +13,15 @@ permissions:
   contents: read
   id-token: write # AWS sign-in (OIDC)
 
-concurrency:
-  group: qa-environment
-  cancel-in-progress: false
-
 jobs:
   deploy:
     name: Deploy QA
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    # One deploy at a time; a waiting approval doesn't hold up the next deploy
+    concurrency:
+      group: qa-environment
+      cancel-in-progress: false
     environment:
       name: qa
       url: https://qa.drxw6dozfluwp.amplifyapp.com
@@ -46,3 +47,36 @@ jobs:
         run: api/bin/qa-up
         env:
           KAMAL_SSH_KEY: ${{ runner.temp }}/deploy_key
+
+  release:
+    name: Approve release
+    needs: deploy
+    runs-on: ubuntu-24.04
+    # A newer merge into qa replaces a release still waiting for approval
+    concurrency:
+      group: release
+      cancel-in-progress: true
+    # The release environment needs an approval; its key is the only thing allowed to update main
+    environment:
+      name: release
+      url: https://neiaboiz.com
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
+      - name: Merge qa into main
+        env:
+          QA_COMMIT: ${{ github.sha }}
+        run: |
+          # Release exactly the commit QA ran, and only if qa hasn't moved on since
+          git fetch -q origin +refs/heads/qa:refs/remotes/origin/qa
+          if [ "$(git rev-parse origin/qa)" != "$QA_COMMIT" ]; then
+            echo "::error::qa has moved on since this QA deploy; approve the newer run instead."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git merge --no-ff --no-edit -m "Release qa ${QA_COMMIT::7}" "$QA_COMMIT"
+          git push origin HEAD:main

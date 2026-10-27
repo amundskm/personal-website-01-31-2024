@@ -89,8 +89,9 @@ with [Kamal](https://kamal-deploy.org). Images are in S3
 `neiaboiz-site-backups` every night (kept 30 days).
 
 Releases go through a pipeline (see "Release pipeline" in the main README):
-a merge into `qa` deploys the QA environment, and a merge from `qa` into
-`main` deploys production, builds the live site and shuts QA down. The
+a merge into `qa` deploys the QA environment, and once you approve the
+release, `qa` is merged into `main`, which deploys production, builds the
+live site and shuts QA down. The
 GitHub workflows run the same scripts you can run by hand.
 
 `bin/kamal` runs Kamal in Docker, so no local Ruby is needed. It uses the

@@ -1,6 +1,7 @@
-# A merge from qa into main releases it: the content API first, then the live
-# site (Amplify's automatic build for main is off, so the site builds against
-# the new API), and once both are live, QA is shut down.
+# An approved release (the "Approve release" step in qa.yml merges qa into
+# main) goes live here: the content API first, then the live site (Amplify's
+# automatic build for main is off, so the site builds against the new API),
+# and once both are live, QA is shut down.
 name: Production
 
 on:
@@ -29,7 +30,8 @@ jobs:
           fetch-depth: 0 # Kamal versions deploys by commit; the check below compares with qa
       - name: Only what QA ran
         run: |
-          # main moves only by merging qa, so this commit must be a merge whose content is exactly qa's
+          # main only moves by an approved release, so this commit must be a merge whose content is exactly qa's
+          git fetch -q origin +refs/heads/qa:refs/remotes/origin/qa # checkout only fetches main
           if ! git rev-parse -q --verify HEAD^2 >/dev/null || ! git diff --quiet HEAD^2 HEAD \
             || ! git merge-base --is-ancestor HEAD^2 origin/qa; then
             echo "::error::main has changes that didn't go through qa, so nothing was released."
