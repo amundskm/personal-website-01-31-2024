@@ -16,8 +16,8 @@ env:
     S3_BUCKET: neiaboiz-site-images-qa
     BACKUP_PREFIX: qa
     # The qa branch's user pool (Amplify backend)
-    COGNITO_USER_POOL_ID: COGNITO_POOL_QA
-    COGNITO_CLIENT_ID: COGNITO_CLIENT_QA
+    COGNITO_USER_POOL_ID: us-east-2_7kioCfe2z
+    COGNITO_CLIENT_ID: 2nvj8msg75p9sev8vvlilg9689
 
 accessories:
   db:

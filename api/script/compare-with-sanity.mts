@@ -14,7 +14,7 @@ import * as q from './sanity-queries';
 const SANITY_API_VERSION = '2025-02-19';
 
 const API = process.argv[2] ?? 'http://localhost:3000';
-const SERVICE_TOKEN = /^SERVICE_TOKEN=(.*)$/m.exec(readFileSync('api/.env', 'utf8'))?.[1];
+const SERVICE_TOKEN = process.env['SERVICE_TOKEN'] ?? /^SERVICE_TOKEN=(.*)$/m.exec(readFileSync('api/.env', 'utf8'))?.[1];
 
 function groq(query: string, dataset: string, params: Record<string, unknown> = {}): unknown {
   // The CLI has no parameter flag, so inline them as GROQ literals

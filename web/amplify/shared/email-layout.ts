@@ -7,7 +7,15 @@
  * and the backend deployer can only load ES modules from this folder.
  */
 
-export const SITE_URL = 'https://neiaboiz.com';
+/**
+ * This environment's site: the SITE_URL environment variable (set per branch
+ * in Amplify, e.g. the QA site for the qa branch, and passed to the functions
+ * that send email), or production. Read through globalThis because this file
+ * is also compiled for the browser, where there is no `process`.
+ */
+export const SITE_URL: string =
+  (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.['SITE_URL'] ||
+  'https://neiaboiz.com';
 
 /** Site design tokens (web/src/styles/_tokens.scss), as email-safe hex colors. */
 const C = {
