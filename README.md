@@ -10,7 +10,6 @@ personal-website/
 ├── web/        Angular app (prerendered/static, SCSS)
 │   └── amplify/  Amplify Gen 2 backend: Cognito login + members API (finances, events)
 ├── api/        Content API: Rails + Postgres (pages, posts, projects, members pages, spending plan, images)
-├── studio/     Sanity Studio: the old editor, being replaced (see "Editing content")
 └── amplify.yml AWS Amplify build spec
 ```
 
@@ -28,7 +27,7 @@ npm run dev:web                     # Website     → http://localhost:4200
 ```
 
 The site reads `http://localhost:3000` unless a build sets `CONTENT_API_URL` (see Deploy).
-To load content, import a Sanity export or the sample content into the API (`api/README.md`).
+To load content, import the sample content into the API (`api/README.md`).
 
 ## Editing content
 
@@ -45,8 +44,7 @@ in the account menu).
 - **Site settings** are drafted and published the same way. The **spending plan** saves
   immediately: it isn't public and needs no rebuild.
 
-Sanity Studio is no longer needed for editing. Existing content was copied over with the
-importer (`bin/rails "sanity:import[…]"`, see `api/README.md`).
+Content was moved here from Sanity (no longer used) with the importer in `api/` (see `api/README.md`).
 
 ## How pages are built
 
@@ -222,21 +220,38 @@ deploying, because the backend build fails without them. For a sandbox, use `npx
 
 | Script | What it does |
 |---|---|
-| `npm run dev:web` / `dev:studio` | Start the website / Studio dev servers |
+| `npm run dev:web` | Start the website dev server |
 | `npm run build:web` | Prerender the site to `web/dist/web/browser` |
 | `npm test` | Run the Angular unit tests (Vitest) |
-| `npm run deploy:studio` | Deploy the Studio to `https://<name>.sanity.studio` |
 
 ## Deploy
 
-### Studio (old editor, until the admin pages replace it)
+### Release pipeline
 
-```sh
-npm run deploy:studio
+Everything reaches the live site through QA:
+
+```
+feature branch ──PR──▶ qa ──▶ QA environment ──PR──▶ main ──▶ live, then QA shuts down
 ```
 
-The first deploy asks you to pick a hostname, e.g. `yourname.sanity.studio`.
-Add that URL as a CORS origin with credentials: `npx sanity cors add https://yourname.sanity.studio --credentials`.
+1. **Start every branch from `qa`** (`git switch -c my-change origin/qa`) **and open its pull request into `qa`.** CI (`.github/workflows/ci.yml`) runs the Angular and Rails
+   tests; they must pass to merge.
+2. **Merging into `qa` starts QA** (`qa.yml`): the QA content API on its temporary Lightsail box
+   (a new box starts with production's latest backup and images), then a build of the
+   password-protected QA site. Test there.
+3. **Open a pull request from `qa` into `main`.** It can only merge when the source is `qa`, the
+   tests pass and the "Deploy QA" run for that commit succeeded. Use **Create a merge commit**.
+4. **Merging into `main` releases it** (`production.yml`): it checks that `main` matches what QA
+   ran, deploys the content API, builds the live site (Amplify's automatic build for `main` is
+   off, so the site always builds against the new API), and then deletes the QA box.
+
+Rulesets on `qa` and `main` enforce this for everyone, admins included. In an emergency, turn a
+ruleset off under **Settings → Rules → Rulesets**, and back on afterwards. If a release fails, QA
+stays up so you can look into it; the run's log says which step failed.
+
+The workflows sign in to AWS through GitHub's OIDC provider as `github-personal-website-qa` or
+`github-personal-website-production`, IAM roles that only trust their GitHub environment (`qa`
+can only deploy from the `qa` branch, `production` only from `main`).
 
 ### Website on AWS Amplify
 

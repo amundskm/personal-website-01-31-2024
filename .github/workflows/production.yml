@@ -1,0 +1,69 @@
+# A merge from qa into main releases it: the content API first, then the live
+# site (Amplify's automatic build for main is off, so the site builds against
+# the new API), and once both are live, QA is shut down.
+name: Production
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write # AWS sign-in (OIDC)
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment:
+      name: production
+      url: https://neiaboiz.com
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # Kamal versions deploys by commit; the check below compares with qa
+      - name: Only what QA ran
+        run: |
+          # main moves only by merging qa, so this commit must be a merge whose content is exactly qa's
+          if ! git rev-parse -q --verify HEAD^2 >/dev/null || ! git diff --quiet HEAD^2 HEAD \
+            || ! git merge-base --is-ancestor HEAD^2 origin/qa; then
+            echo "::error::main has changes that didn't go through qa, so nothing was released."
+            exit 1
+          fi
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-2
+      - name: Deploy key and Kamal secrets
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KAMAL_SECRETS: ${{ secrets.KAMAL_SECRETS }}
+        run: |
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$RUNNER_TEMP/deploy_key"
+          chmod 600 "$RUNNER_TEMP/deploy_key"
+          mkdir -p api/.kamal
+          printf '%s\n' "$KAMAL_SECRETS" > api/.kamal/secrets.production
+      - name: Deploy the content API
+        run: api/bin/kamal deploy -d production
+        env:
+          KAMAL_SSH_KEY: ${{ runner.temp }}/deploy_key
+      - name: Build the live site
+        run: api/bin/amplify-build main
+
+  close-qa:
+    name: Close QA
+    needs: release
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - uses: actions/checkout@v7
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-2
+      - run: api/bin/qa-down

@@ -2,13 +2,46 @@
 # Runs Kamal in Docker (same version as the Gemfile), so deploying needs no
 # local Ruby. Host networking lets the boxes pull images through Kamal's SSH
 # tunnel to the local registry. The deploy key defaults to
-# ~/.ssh/personal-website-deploy (override with KAMAL_SSH_KEY).
+# ~/.ssh/personal-website-deploy, or ~/.ssh/personal-website-qa-deploy for qa
+# (override with KAMAL_SSH_KEY).
 #
 #   bin/kamal deploy -d production
+#
+# Code only ships from its pipeline branch: qa from origin/qa, production from
+# origin/main (which only takes merges from qa). The GitHub workflows deploy.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-key="${KAMAL_SSH_KEY:-$HOME/.ssh/personal-website-deploy}"
+destination="" previous=""
+for arg in "$@"; do
+  [ "$previous" = "-d" ] && destination=$arg
+  case $arg in --destination=*) destination=${arg#*=} ;; esac
+  previous=$arg
+done
+
+case "${1:-}" in
+  deploy | setup | redeploy)
+    case $destination in
+      qa) branch=qa ;;
+      production) branch=main ;;
+      *) echo "Name the destination: -d qa or -d production" >&2; exit 1 ;;
+    esac
+    if [ -n "$(git status --porcelain)" ]; then
+      echo "Commit or stash your changes first: $destination only gets what's on origin/$branch." >&2
+      exit 1
+    fi
+    git fetch -q origin "$branch"
+    if [ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/$branch")" ]; then
+      echo "$destination only gets what's on origin/$branch. Check it out (git switch $branch && git pull)," >&2
+      echo "or merge your change into $branch through a pull request." >&2
+      exit 1
+    fi
+    ;;
+esac
+
+default_key=$HOME/.ssh/personal-website-deploy
+[ "$destination" = qa ] && default_key=$HOME/.ssh/personal-website-qa-deploy
+key="${KAMAL_SSH_KEY:-$default_key}"
 [ -f "$key" ] || { echo "Deploy key not found: $key" >&2; exit 1; }
 
 # Git Bash on Windows: hand Docker Windows paths, and don't let MSYS rewrite them

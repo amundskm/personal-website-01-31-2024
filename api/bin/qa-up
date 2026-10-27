@@ -1,11 +1,12 @@
 #!/bin/bash
-# Creates the QA content API (about $0.01/hour while it exists) and fills it:
+# Creates or updates the QA environment (about $0.01/hour while its box exists):
+# the QA content API at qa-api.neiaboiz.com, then a build of the QA site.
 #
-#   bin/qa-up                          # copy of production's latest backup and images
-#   bin/qa-up --from-sanity DIR [DIR…]  # or Sanity exports (extracted folders with data.ndjson)
+#   bin/qa-up    # deploys origin/qa; a new box starts with production's latest backup and images
 #
-# Then starts a build of the QA site. Delete everything with bin/qa-down.
-# Needs: the AWS CLI signed in (aws login), Docker, the deploy key, and
+# The QA workflow runs this on every merge into qa, and the production workflow
+# deletes the box (bin/qa-down) once a release is live.
+# Needs: the AWS CLI signed in (aws login), Docker, the QA deploy key, and
 # .kamal/secrets.qa (see README.md).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -14,13 +15,9 @@ REGION=us-east-2
 NAME=content-api-qa
 HOST=qa-api.neiaboiz.com
 ZONE_ID=Z057981539I3P54Q5JA3G
-AMPLIFY_APP=drxw6dozfluwp
-KEY_PAIR=personal-website-deploy
-SSH_KEY="${KAMAL_SSH_KEY:-$HOME/.ssh/personal-website-deploy}"
+KEY_PAIR=personal-website-qa-deploy
+export KAMAL_SSH_KEY="${KAMAL_SSH_KEY:-$HOME/.ssh/personal-website-qa-deploy}"
 aws() { command aws --region "$REGION" "$@"; }
-
-sanity=()
-if [ "${1:-}" = "--from-sanity" ]; then shift; sanity=("$@"); [ ${#sanity[@]} -gt 0 ] || { echo "Give the export folders" >&2; exit 1; }; fi
 
 if ! aws lightsail get-instance --instance-name "$NAME" >/dev/null 2>&1; then
   echo "Creating the QA box…"
@@ -28,7 +25,7 @@ if ! aws lightsail get-instance --instance-name "$NAME" >/dev/null 2>&1; then
     --blueprint-id ubuntu_24_04 --bundle-id micro_3_0 --key-pair-name "$KEY_PAIR" \
     --user-data file://config/lightsail-init.sh --tags key=project,value=personal-website key=env,value=qa >/dev/null
 fi
-aws lightsail wait instance-running --instance-name "$NAME" 2>/dev/null || sleep 30
+until [ "$(aws lightsail get-instance --instance-name "$NAME" --query instance.state.name --output text)" = running ]; do sleep 5; done
 aws lightsail open-instance-public-ports --instance-name "$NAME" --port-info fromPort=443,toPort=443,protocol=tcp >/dev/null
 ip=$(aws lightsail get-instance --instance-name "$NAME" --query instance.publicIpAddress --output text)
 
@@ -37,32 +34,30 @@ aws route53 change-resource-record-sets --hosted-zone-id "$ZONE_ID" --change-bat
   "{\"Changes\":[{\"Action\":\"UPSERT\",\"ResourceRecordSet\":{\"Name\":\"$HOST\",\"Type\":\"A\",\"TTL\":60,\"ResourceRecords\":[{\"Value\":\"$ip\"}]}}]}" >/dev/null
 
 echo "Waiting for the box to finish setting up…"
-until ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 "ubuntu@$ip" \
+until ssh -i "$KAMAL_SSH_KEY" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=5 "ubuntu@$ip" \
   test -f /var/lib/cloud/instance/content-api-ready 2>/dev/null; do sleep 10; done
-# Kamal connects by host name: trust this box's new host key for it
+# Kamal connects by host name: trust this box's host key for it
 ssh-keygen -R "$HOST" >/dev/null 2>&1 || true
-ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new "ubuntu@$HOST" true
+ssh -i "$KAMAL_SSH_KEY" -o StrictHostKeyChecking=accept-new "ubuntu@$HOST" true
 
-if [ ${#sanity[@]} -eq 0 ]; then
-  echo "Copying production's images…"
-  command aws s3 sync s3://neiaboiz-site-images-production s3://neiaboiz-site-images-qa --only-show-errors
-fi
+echo "Copying production's images…"
+command aws s3 sync s3://neiaboiz-site-images-production s3://neiaboiz-site-images-qa --only-show-errors
 
 echo "Deploying…"
+# setup is safe to repeat: it starts Postgres if needed, then deploys
 bin/kamal setup -d qa
 
-if [ ${#sanity[@]} -eq 0 ]; then
+# A new (empty) database starts as a copy of production's; later deploys keep QA's edits
+if bin/kamal app exec -d qa --reuse "bin/rails runner 'exit(Page.none?)'" >/dev/null 2>&1; then
+  echo "Loading production's latest backup…"
   bin/kamal app exec -d qa --reuse "bin/backup restore latest production"
-else
-  # The exports aren't in the image: stream each into the running app and import it there
-  container=$(ssh -i "$SSH_KEY" "ubuntu@$HOST" docker ps -q --filter label=service=content-api --filter label=role=web | head -1)
-  for dir in "${sanity[@]}"; do
-    echo "Importing $dir…"
-    tar -C "$dir" -cf - . | ssh -i "$SSH_KEY" "ubuntu@$HOST" \
-      "docker exec -i $container sh -c 'rm -rf /tmp/import && mkdir /tmp/import && tar -C /tmp/import -xf - && bin/rails \"sanity:import[/tmp/import]\"; rm -rf /tmp/import'"
-  done
+  if bin/kamal app exec -d qa --reuse "bin/rails runner 'exit(Page.none?)'" >/dev/null 2>&1; then
+    echo "Production's latest backup has no pages, so the QA site would be empty. Take a fresh one with" >&2
+    echo "  bin/kamal app exec -d production --reuse \"bin/backup dump\"" >&2
+    echo "then re-run this workflow (or bin/qa-up)." >&2
+    exit 1
+  fi
 fi
 
-echo "Building the QA site…"
-aws amplify start-job --app-id "$AMPLIFY_APP" --branch-name qa --job-type RELEASE >/dev/null
-echo "QA API: https://$HOST  ·  QA site: https://qa.$AMPLIFY_APP.amplifyapp.com (builds in a few minutes)"
+bin/amplify-build qa
+echo "QA API: https://$HOST  ·  QA site: https://qa.drxw6dozfluwp.amplifyapp.com"

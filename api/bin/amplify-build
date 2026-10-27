@@ -1,0 +1,33 @@
+#!/bin/bash
+# Builds an Amplify branch of the site and waits for the result; fails if the build does.
+#
+#   bin/amplify-build qa      # the QA site (needs the QA API up)
+#   bin/amplify-build main    # the live site (the production workflow runs this)
+set -euo pipefail
+
+APP=drxw6dozfluwp
+BRANCH=${1:?Give the branch: qa or main}
+aws() { command aws --region us-east-2 "$@"; }
+status() { aws amplify get-job --app-id "$APP" --branch-name "$BRANCH" --job-id "$1" --query job.summary.status --output text; }
+
+# One build at a time per branch: let a running one finish first
+latest=$(aws amplify list-jobs --app-id "$APP" --branch-name "$BRANCH" --max-results 1 --no-paginate --query 'jobSummaries[0].jobId' --output text)
+if [ -n "$latest" ] && [ "$latest" != None ]; then
+  while case $(status "$latest") in PENDING | PROVISIONING | RUNNING | CANCELLING) true ;; *) false ;; esac; do
+    echo "Waiting for build $latest of $BRANCH to finish…"
+    sleep 20
+  done
+fi
+
+job=$(aws amplify start-job --app-id "$APP" --branch-name "$BRANCH" --job-type RELEASE --query jobSummary.jobId --output text)
+echo "Building $BRANCH (job $job): https://us-east-2.console.aws.amazon.com/amplify/apps/$APP/branches/$BRANCH/deployments/$job"
+deadline=$((SECONDS + 1800))
+while :; do
+  result=$(status "$job")
+  case $result in
+    SUCCEED) echo "Build $job of $BRANCH succeeded."; exit 0 ;;
+    FAILED | CANCELLED) echo "Build $job of $BRANCH: $result" >&2; exit 1 ;;
+  esac
+  [ $SECONDS -lt $deadline ] || { echo "Build $job of $BRANCH is still $result after 30 minutes" >&2; exit 1; }
+  sleep 20
+done
