@@ -35,6 +35,30 @@ docker compose run --rm api bin/rails "sanity:import[db/import/sample.ndjson]" #
 | `GET /service/spending-plan` | `SERVICE_TOKEN` | Spending plan for the finances Lambda |
 | `POST /service/spending-plan/rules` | `SERVICE_TOKEN` | Remember merchant patterns: `{ rules: [{ categoryKey, pattern }] }` |
 
+### Admin (Cognito access token, `admin` group)
+
+| Route | Does |
+|---|---|
+| `GET/POST /admin/:collection` | List / create (`pages`, `posts`, `projects`, `member-pages`) |
+| `GET/PUT/DELETE /admin/:collection/:id` | Read / save a draft / delete (on Publish if it's live) |
+| `POST /admin/:collection/:id/discard` | Throw away a draft or pending delete |
+| `POST /admin/:collection[/:id]/preview` | Render an unsaved document as the site would |
+| `GET/PUT /admin/settings`, `POST /admin/settings/discard`, `/preview` | Site settings, drafted the same way |
+| `GET/PUT /admin/spending-plan` | Spending plan (saves apply immediately) |
+| `GET/POST /admin/images` | Image library / upload (multipart `file`, up to 20 MB) |
+| `GET /admin/link-targets` | Pages, posts and projects to link to |
+| `GET/POST /admin/publish` | Pending changes / apply them all and rebuild the site |
+
+Bodies are `{ "document": { … } }` in the editable document shape (camelCase,
+slug as a string; see `document_fields` in each model).
+
+### Drafts
+
+Saving a published document stores a `draft`; the site keeps showing the live
+columns until **Publish**. A new document is hidden (`published: false`) until
+its first Publish, and deleting a published one waits for Publish too. Publish
+then calls the branch's Amplify webhook so the static site is rebuilt.
+
 ## How content is stored
 
 Each table has columns for the fields that are queried or sorted on (slug,
@@ -53,3 +77,4 @@ image URLs and slugs when building a response.
 | `SERVICE_TOKEN` | Shared secret for `/service/*` |
 | `CORS_ORIGINS` | Comma-separated site origins allowed to call the API |
 | `PUBLIC_API_URL` | Public origin used in image URLs (defaults to the request's) |
+| `AMPLIFY_WEBHOOK_URL` | Amplify incoming webhook for this environment's branch: Publish rebuilds the site |

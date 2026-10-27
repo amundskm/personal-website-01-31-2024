@@ -2,10 +2,22 @@
 # transactions) and stage targets. There is a single row. Only the finances
 # Lambda reads it, through the service API.
 class SpendingPlan < ApplicationRecord
+  include EditableDocument
+
   PATTERN_LENGTH = 3..80
+
+  document_fields "title" => :title, "categories" => :categories, "stages" => :stages
+
+  validate :lists_of_objects
 
   def self.instance
     first_or_create!
+  end
+
+  # Admin edits apply immediately: the plan isn't public and needs no rebuild
+  def save_document!(doc)
+    assign_document(self.class.normalize_document(doc))
+    save!
   end
 
   # The shape the finances Lambda expects (formerly SPENDING_PLAN_QUERY).
@@ -60,5 +72,18 @@ class SpendingPlan < ApplicationRecord
 
       plan.save! if changed
     end
+  end
+
+  private
+
+  def lists_of_objects
+    %w[categories stages].each do |field|
+      list = self[field]
+      errors.add(field, "must be a list of objects") unless list.is_a?(Array) && list.all?(Hash)
+    end
+    return if errors.any?
+
+    errors.add(:categories, "need a name") if categories.any? { |c| c["name"].blank? }
+    errors.add(:categories, "merchant patterns must be text") unless categories.all? { |c| Array(c["merchantPatterns"]).all?(String) }
   end
 end

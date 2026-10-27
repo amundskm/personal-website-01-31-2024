@@ -88,6 +88,11 @@ class Image < ApplicationRecord
     }
   end
 
+  # A small preview for the admin
+  def thumbnail_url(base_url)
+    passthrough? ? "#{base_url}/images/#{id}" : "#{as_asset(base_url)['url']}&w=320"
+  end
+
   # Whether the file is actually in storage (an interrupted upload can leave
   # the record without it).
   def stored?

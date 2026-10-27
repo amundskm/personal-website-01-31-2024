@@ -14,8 +14,11 @@ class ContentResolver
   LINK_FIELDS = %w[_key label kind path url style internal].freeze
   LINKABLE = { "page" => Page, "post" => Post, "project" => Project }.freeze
 
-  def initialize(base_url)
+  # `include_unpublished` is for admin previews: links and lists may then
+  # point at documents that haven't been published yet.
+  def initialize(base_url, include_unpublished: false)
     @base_url = base_url
+    @include_unpublished = include_unpublished
   end
 
   def settings(settings)
@@ -129,7 +132,7 @@ class ContentResolver
       when "projectGridBlock"
         section.merge("items" => project_grid_items(section))
       when "postListBlock"
-        section.merge("items" => Post.newest_first.limit(MAX_LIST_ITEMS).map { |post| post_card(post) })
+        section.merge("items" => visible(Post).newest_first.limit(MAX_LIST_ITEMS).map { |post| post_card(post) })
       else
         section
       end
@@ -140,14 +143,16 @@ class ContentResolver
     case section["mode"]
     when "manual"
       uids = Array(section["projects"]).map { |ref| ref["_ref"] }
-      by_uid = Project.where(uid: uids).index_by(&:uid)
+      by_uid = visible(Project).where(uid: uids).index_by(&:uid)
       uids.filter_map { |uid| by_uid[uid] && project_card(by_uid[uid]) }.presence
     when "all"
-      Project.in_display_order.limit(MAX_LIST_ITEMS).map { |project| project_card(project) }
+      visible(Project).in_display_order.limit(MAX_LIST_ITEMS).map { |project| project_card(project) }
     else
-      Project.featured.in_display_order.limit(MAX_LIST_ITEMS).map { |project| project_card(project) }
+      visible(Project).featured.in_display_order.limit(MAX_LIST_ITEMS).map { |project| project_card(project) }
     end
   end
+
+  def visible(model) = @include_unpublished ? model.where(pending_delete: false) : model.live
 
   # Replaces image and link references throughout `value`.
   def resolve(value)
@@ -160,7 +165,7 @@ class ContentResolver
 
     images = Image.where(id: image_ids.to_a).index_by(&:id)
     docs = LINKABLE.flat_map do |type, model|
-      model.where(uid: doc_uids.to_a).pluck(:uid, :slug).map { |uid, slug| [uid, { "_type" => type, "slug" => slug }] }
+      visible(model).where(uid: doc_uids.to_a).pluck(:uid, :slug).map { |uid, slug| [uid, { "_type" => type, "slug" => slug }] }
     end.to_h
 
     replace(value, images, docs)

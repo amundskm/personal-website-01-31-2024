@@ -13,6 +13,9 @@ class SanityImport
   CONTENT_TYPES = { "jpg" => "image/jpeg", "jpeg" => "image/jpeg", "png" => "image/png", "gif" => "image/gif",
                     "webp" => "image/webp", "svg" => "image/svg+xml", "avif" => "image/avif" }.freeze
 
+  MODELS = { "siteSettings" => SiteSetting, "spendingPlan" => SpendingPlan, "page" => Page, "post" => Post,
+             "project" => Project, "memberPage" => MemberPage }.freeze
+
   attr_reader :counts, :warnings
 
   # `source` is an extracted export directory (with data.ndjson) or an .ndjson file.
@@ -42,57 +45,22 @@ class SanityImport
     return if id.start_with?("drafts.", "versions.") || doc["_type"].start_with?("sanity.", "system.")
 
     doc = with_asset_refs(doc)
-    case doc["_type"]
-    when "siteSettings" then upsert_singleton(SiteSetting, settings_attrs(doc))
-    when "spendingPlan" then upsert_singleton(SpendingPlan, doc.slice("title").merge(
-      "categories" => doc["categories"] || [], "stages" => doc["stages"] || [],
-    ))
-    when "page" then upsert(Page, doc, "sections" => doc["sections"] || [], "seo" => doc["seo"])
-    when "post" then upsert(Post, doc, post_attrs(doc))
-    when "project" then upsert(Project, doc, project_attrs(doc))
-    when "memberPage" then upsert(MemberPage, doc, "summary" => doc["summary"], "audiences" => doc["audiences"] || [],
-                                                   "sections" => doc["sections"] || [])
-    else
-      @warnings << "Skipped #{id}: unknown type #{doc['_type']}"
-    end
-  end
+    model = MODELS[doc["_type"]]
+    return @warnings << "Skipped #{id}: unknown type #{doc['_type']}" unless model
 
-  def settings_attrs(doc)
-    {
-      "title" => doc["title"], "description" => doc["description"], "footer_text" => doc["footerText"],
-      "navigation" => doc["navigation"] || [], "social_links" => doc["socialLinks"] || [], "seo" => doc["seo"],
-    }
-  end
+    record =
+      if model.column_names.include?("uid")
+        slug = doc.dig("slug", "current")
+        return @warnings << "Skipped #{id}: no slug (it was never published to the site)" if slug.blank?
 
-  def post_attrs(doc)
-    {
-      "excerpt" => doc["excerpt"], "published_at" => doc["publishedAt"], "tags" => doc["tags"] || [],
-      "cover_image" => doc["coverImage"], "body" => doc["body"] || [], "seo" => doc["seo"],
-    }
-  end
-
-  def project_attrs(doc)
-    {
-      "summary" => doc["summary"], "tech_stack" => doc["techStack"] || [], "year" => doc["year"],
-      "featured" => doc["featured"] || false, "position" => doc["order"], "repo_url" => doc["repoUrl"],
-      "live_url" => doc["liveUrl"], "cover_image" => doc["coverImage"], "body" => doc["body"] || [],
-      "gallery" => doc["gallery"] || [], "seo" => doc["seo"],
-    }
-  end
-
-  def upsert(model, doc, attrs)
-    slug = doc.dig("slug", "current")
-    return @warnings << "Skipped #{doc['_id']}: no slug (it was never published to the site)" if slug.blank?
-
-    record = model.find_or_initialize_by(uid: doc["_id"])
-    record.assign_attributes(attrs.merge("title" => doc["title"], "slug" => slug, **timestamps(doc)))
+        doc = doc.merge("slug" => slug)
+        model.find_or_initialize_by(uid: id)
+      else
+        model.first_or_initialize # singletons
+      end
+    record.assign_document(model.normalize_document(doc))
+    record.assign_attributes(timestamps(doc))
     record.save!
-    @counts[model.name] += 1
-  end
-
-  def upsert_singleton(model, attrs)
-    record = model.first_or_initialize
-    record.update!(attrs)
     @counts[model.name] += 1
   end
 

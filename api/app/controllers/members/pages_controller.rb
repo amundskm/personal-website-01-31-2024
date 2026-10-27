@@ -15,7 +15,7 @@ class Members::PagesController < ApplicationController
 
   private
 
-  def visible_pages = MemberPage.visible_to(current_groups)
+  def visible_pages = MemberPage.live.visible_to(current_groups)
 
   def require_any_group!
     render json: { message: "Your account has no permissions yet." }, status: :forbidden if current_groups.empty?

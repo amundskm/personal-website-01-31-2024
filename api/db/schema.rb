@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_27_154000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_27_200000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -60,6 +60,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_154000) do
     t.jsonb "sections", default: [], null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.jsonb "draft"
+    t.boolean "published", default: true, null: false
+    t.boolean "pending_delete", default: false, null: false
     t.index ["slug"], name: "index_member_pages_on_slug", unique: true
     t.index ["uid"], name: "index_member_pages_on_uid", unique: true
   end
@@ -72,6 +75,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_154000) do
     t.jsonb "seo"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.jsonb "draft"
+    t.boolean "published", default: true, null: false
+    t.boolean "pending_delete", default: false, null: false
     t.index ["slug"], name: "index_pages_on_slug", unique: true
     t.index ["uid"], name: "index_pages_on_uid", unique: true
   end
@@ -88,6 +94,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_154000) do
     t.jsonb "seo"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.jsonb "draft"
+    t.boolean "published", default: true, null: false
+    t.boolean "pending_delete", default: false, null: false
     t.index ["published_at"], name: "index_posts_on_published_at"
     t.index ["slug"], name: "index_posts_on_slug", unique: true
     t.index ["uid"], name: "index_posts_on_uid", unique: true
@@ -110,6 +119,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_154000) do
     t.jsonb "seo"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.jsonb "draft"
+    t.boolean "published", default: true, null: false
+    t.boolean "pending_delete", default: false, null: false
     t.index ["slug"], name: "index_projects_on_slug", unique: true
     t.index ["uid"], name: "index_projects_on_uid", unique: true
   end
@@ -123,6 +135,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_27_154000) do
     t.jsonb "seo"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.jsonb "draft"
   end
 
   create_table "spending_plans", force: :cascade do |t|

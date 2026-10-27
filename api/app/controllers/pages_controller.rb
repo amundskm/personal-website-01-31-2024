@@ -3,10 +3,10 @@ class PagesController < ApplicationController
 
   # Slugs to prerender; the home page is prerendered at "/"
   def slugs
-    render json: Page.where.not(slug: "home").order(:slug).pluck(:slug)
+    render json: Page.live.where.not(slug: "home").order(:slug).pluck(:slug)
   end
 
   def show
-    render json: resolver.page(Page.find_by!(slug: params[:slug]))
+    render json: resolver.page(Page.live.find_by!(slug: params[:slug]))
   end
 end
