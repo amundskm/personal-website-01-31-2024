@@ -1,4 +1,10 @@
-import { discordMessage, isDiscordWebhook, postsToDiscord, sendToDiscord } from './discord';
+import {
+  discordMessage,
+  isDiscordWebhook,
+  postsToDiscord,
+  sendToDiscord,
+  discordFailureEmail,
+} from './discord';
 import type { GroupEvent } from './events';
 
 // Made-up event only: the repository is public.
@@ -161,5 +167,32 @@ describe('sendToDiscord fails gracefully', () => {
     expect((await run(spy, '')).result).toBe('skipped');
     expect((await run(spy, 'https://evil.example/hook')).result).toBe('skipped');
     expect(called).toBe(false);
+  });
+});
+
+describe('discordFailureEmail', () => {
+  it('tells the admins which event and branch failed, and how to fix it', () => {
+    const email = discordFailureEmail(
+      'skipped',
+      { title: 'Lake weekend' },
+      'https://qa.example.com/events/e1',
+      'qa',
+    );
+    expect(email.subject).toBe('Discord post failed: Lake weekend');
+    expect(email.text).toContain('"Lake weekend" was created on the qa branch');
+    expect(email.text).toContain('DISCORD_WEBHOOK_URL secret is missing');
+    expect(email.text).toContain("Set the branch's own DISCORD_WEBHOOK_URL secret");
+    expect(email.html).toContain('https://qa.example.com/events/e1');
+  });
+
+  it('explains a deleted webhook', () => {
+    const email = discordFailureEmail(
+      'gone',
+      { title: 'Poker night' },
+      'https://neiaboiz.com/events/e2',
+      'main',
+    );
+    expect(email.text).toContain('no longer exists');
+    expect(email.text).toContain('on the main branch');
   });
 });

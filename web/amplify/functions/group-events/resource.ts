@@ -22,5 +22,11 @@ export const groupEvents = defineFunction({
     // Loaded when the function starts: redeploy to apply a changed URL right away.
     // Keep it defined (deploys require every referenced secret to exist).
     DISCORD_WEBHOOK_URL: secret('DISCORD_WEBHOOK_URL'),
+    // Only branches with their own channel post: main (the real channel) and
+    // qa (a test channel), each with its own DISCORD_WEBHOOK_URL branch secret.
+    // Sandboxes never post. AWS_BRANCH is set by Amplify builds.
+    DISCORD_ENABLED: ['main', 'qa'].includes(process.env['AWS_BRANCH'] ?? '') ? 'true' : 'false',
+    // Named in failure emails, so it's clear which environment failed
+    BRANCH: process.env['AWS_BRANCH'] || 'sandbox',
   },
 });
