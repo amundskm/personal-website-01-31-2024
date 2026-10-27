@@ -1,0 +1,48 @@
+# Every merge into qa starts (or updates) the QA environment: the QA content
+# API on its temporary Lightsail box, then a build of the password-protected
+# QA site. Test there, then open a pull request from qa into main.
+name: QA
+
+on:
+  push:
+    branches: [qa]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # AWS sign-in (OIDC)
+
+concurrency:
+  group: qa-environment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy QA
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: qa
+      url: https://qa.drxw6dozfluwp.amplifyapp.com
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Kamal versions deploys by commit
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-2
+      - name: Deploy key and Kamal secrets
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KAMAL_SECRETS: ${{ secrets.KAMAL_SECRETS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$RUNNER_TEMP/deploy_key"
+          chmod 600 "$RUNNER_TEMP/deploy_key"
+          mkdir -p api/.kamal
+          printf '%s\n' "$KAMAL_SECRETS" > api/.kamal/secrets.qa
+      - name: Start QA
+        run: api/bin/qa-up
+        env:
+          KAMAL_SSH_KEY: ${{ runner.temp }}/deploy_key
