@@ -11,9 +11,8 @@ import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { auth } from './auth/resource';
 import { finances } from './functions/finances/resource';
 import { EVENTS_FROM_ADDRESS, groupEvents } from './functions/group-events/resource';
-import { membersContent } from './functions/members-content/resource';
 
-const backend = defineBackend({ auth, membersContent, finances, groupEvents });
+const backend = defineBackend({ auth, finances, groupEvents });
 
 // Invite-only: accounts are created by an admin in the Cognito console. Set
 // just this flag: replacing adminCreateUserConfig would drop the invitation email.
@@ -23,8 +22,9 @@ cfnResources.cfnUserPool.addPropertyOverride(
   true,
 );
 
-// HTTP API for gated content. API Gateway rejects requests without a valid
-// Cognito token, and the Lambda filters content by the caller's groups.
+// HTTP API for members' features (finances, events). API Gateway rejects
+// requests without a valid Cognito token; each Lambda checks the caller's groups.
+// Members-only pages come from the content API (api/), which checks tokens itself.
 const apiStack = backend.createStack('members-api');
 
 const authorizer = new HttpJwtAuthorizer(
@@ -49,14 +49,6 @@ const httpApi = new HttpApi(apiStack, 'MembersApi', {
   },
 });
 
-const integration = new HttpLambdaIntegration(
-  'MembersContentIntegration',
-  backend.membersContent.resources.lambda,
-);
-
-for (const path of ['/pages', '/pages/{slug}']) {
-  httpApi.addRoutes({ path, methods: [HttpMethod.GET], integration, authorizer });
-}
 
 // Family finances: uploaded card statements, one item per statement. Only the
 // finances Lambda can read it; it's kept if the backend is ever torn down.

@@ -2,12 +2,12 @@ import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { PostCard } from '../../core/models';
-import { SanityImageComponent } from '../sanity-image/sanity-image';
+import { CmsImageComponent } from '../cms-image/cms-image';
 import { WizardHat } from '../wizard/wizard-hat';
 
 @Component({
   selector: 'app-post-card',
-  imports: [DatePipe, RouterLink, SanityImageComponent, WizardHat],
+  imports: [DatePipe, RouterLink, CmsImageComponent, WizardHat],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <article class="card">
@@ -18,7 +18,7 @@ import { WizardHat } from '../wizard/wizard-hat';
           tabindex="-1"
           aria-hidden="true"
         >
-          <app-sanity-image
+          <app-cms-image
             [image]="post().coverImage"
             [width]="640"
             [aspectRatio]="16 / 9"

@@ -2,7 +2,7 @@
  * Finances domain logic, shared by the finances Lambda (which stores and
  * summarizes statements) and the dashboard/upload pages.
  *
- * Contains no data: the plan lives in the private Sanity dataset and the
+ * Contains no data: the plan lives in the content API (api/) and the
  * statements in DynamoDB, both behind the members API. Transaction amounts are
  * integer cents; plan budgets and targets are whole dollars, as entered in the Studio.
  */

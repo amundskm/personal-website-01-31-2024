@@ -1,3 +1,5 @@
+import { renderEmail } from '../../../../amplify/shared/email-layout';
+import type { Email } from './event-email';
 import {
   formatDeadline,
   formatEventDate,
@@ -148,4 +150,64 @@ export async function sendToDiscord(
     );
     return 'failed';
   }
+}
+
+/** What went wrong, and what to do about it, for each way a post can fail. */
+const FAILURES: Record<Exclude<DiscordResult, 'sent'>, { problem: string; fix: string }> = {
+  skipped: {
+    problem:
+      "No Discord webhook is set for this branch: its DISCORD_WEBHOOK_URL secret is missing or isn't a Discord webhook address.",
+    fix: "Set the branch's own DISCORD_WEBHOOK_URL secret in Amplify (Hosting, Secrets), then redeploy the branch.",
+  },
+  gone: {
+    problem:
+      'Discord says the webhook no longer exists: its channel or the webhook itself was probably deleted.',
+    fix: "Create a new webhook in the Discord channel, put it in the branch's DISCORD_WEBHOOK_URL secret, then redeploy.",
+  },
+  'rate-limited': {
+    problem: 'Discord rate-limited the post.',
+    fix: 'Nothing to change; if it keeps happening, post less often.',
+  },
+  failed: {
+    problem: "Discord couldn't be reached or returned an error.",
+    fix: 'Check that Discord is up. The event itself was created.',
+  },
+};
+
+/**
+ * The email admins get when an event couldn't be posted to Discord. There is
+ * no fallback channel, so a failure is reported instead of posted elsewhere.
+ */
+export function discordFailureEmail(
+  result: Exclude<DiscordResult, 'sent'>,
+  event: { title: string },
+  eventUrl: string,
+  branch: string,
+): Email {
+  const { problem, fix } = FAILURES[result];
+  const subject = `Discord post failed: ${event.title}`;
+  const where = `on the ${branch} branch`;
+  return {
+    subject,
+    text: [
+      `"${event.title}" was created ${where}, but it wasn't posted to Discord.`,
+      '',
+      problem,
+      fix,
+      '',
+      eventUrl,
+    ].join('\n'),
+    html: renderEmail({
+      eyebrow: 'Discord',
+      heading: 'A Discord post failed',
+      preheader: `"${event.title}" wasn't posted to Discord`,
+      paragraphs: [
+        `"${event.title}" was created ${where}, but it wasn't posted to Discord.`,
+        problem,
+        fix,
+      ],
+      button: { href: eventUrl, text: 'Open the event' },
+      footer: "You're getting this because you're an admin of neiaboiz.com.",
+    }),
+  };
 }

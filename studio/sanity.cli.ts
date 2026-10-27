@@ -10,11 +10,4 @@ export default defineCliConfig({
   deployment: {
     autoUpdates: true,
   },
-  typegen: {
-    path: "../web/src/app/core/queries.ts",
-    schema: "./schema.json",
-    generates: "../web/src/app/core/sanity.types.ts",
-    // The Angular app queries Sanity through HttpClient, not @sanity/client
-    overloadClientMethods: false,
-  },
 });

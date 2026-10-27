@@ -22,6 +22,7 @@ describe('Header account menu', () => {
           useValue: {
             state: computed(() => ({ status: 'signedIn', user: user() })),
             user,
+            isAdmin: computed(() => user().roles.includes('admin')),
             signOut: async () => {
               signedOut++;
             },
@@ -95,5 +96,20 @@ describe('Header account menu', () => {
     button.click();
     fixture.detectChanges();
     expect(menuItems(el)).toEqual(['Log out']);
+  });
+
+  it('offers admins "Edit site"', async () => {
+    const el = await render(['admin'], { name: 'Pat', avatarUrl: null });
+    el.querySelector<HTMLButtonElement>('.account__button')!.click();
+    fixture.detectChanges();
+    expect(menuItems(el)).toEqual(['Profile settings', 'Edit site', 'Log out']);
+    expect(el.querySelector('[role="menuitem"][href="/admin"]')).not.toBeNull();
+  });
+
+  it('does not offer "Edit site" to other members', async () => {
+    const el = await render(['neia-boiz'], { name: 'Pat', avatarUrl: null });
+    el.querySelector<HTMLButtonElement>('.account__button')!.click();
+    fixture.detectChanges();
+    expect(menuItems(el)).not.toContain('Edit site');
   });
 });

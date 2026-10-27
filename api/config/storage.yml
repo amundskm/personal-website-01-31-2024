@@ -1,0 +1,26 @@
+test:
+  service: Disk
+  root: <%= Rails.root.join("tmp/storage") %>
+
+local:
+  service: Disk
+  root: <%= Rails.root.join("storage") %>
+
+# Production and QA: one bucket per environment. The AWS SDK reads
+# AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY from the environment.
+amazon:
+  service: S3
+  region: <%= ENV.fetch("AWS_REGION", "us-east-2") %>
+  bucket: <%= ENV["S3_BUCKET"] %>
+
+# Remember not to checkin your GCS keyfile to a repository
+# google:
+#   service: GCS
+#   project: your_project
+#   credentials: <%= Rails.root.join("path/to/gcs.keyfile") %>
+#   bucket: your_own_bucket-<%= Rails.env %>
+
+# mirror:
+#   service: Mirror
+#   primary: local
+#   mirrors: [ amazon, google, microsoft ]

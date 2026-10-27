@@ -1,14 +1,14 @@
 import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { SanityImageComponent } from '../sanity-image/sanity-image';
+import { CmsImageComponent } from '../cms-image/cms-image';
 import { CodeBlockComponent } from './code-block';
 import { toPtNodes, type PtNode } from './portable-text-model';
 
-/** Renders Sanity Portable Text (rich text) as semantic HTML. */
+/** Renders Portable Text (rich text) as semantic HTML. */
 @Component({
   selector: 'app-portable-text',
-  imports: [NgTemplateOutlet, RouterLink, SanityImageComponent, CodeBlockComponent],
+  imports: [NgTemplateOutlet, RouterLink, CmsImageComponent, CodeBlockComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'prose' },
   template: `
@@ -52,7 +52,7 @@ import { toPtNodes, type PtNode } from './portable-text-model';
         }
         @case ('image') {
           <figure>
-            <app-sanity-image
+            <app-cms-image
               [image]="node.image"
               [width]="800"
               sizes="(min-width: 50rem) 800px, 100vw"

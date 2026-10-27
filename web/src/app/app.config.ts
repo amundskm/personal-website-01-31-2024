@@ -13,7 +13,7 @@ export const appConfig: ApplicationConfig = {
       withInMemoryScrolling({ scrollPositionRestoration: 'enabled', anchorScrolling: 'enabled' }),
     ),
     provideHttpClient(withFetch()),
-    // Hydration replays the prerendered HTTP responses, so Sanity isn't re-queried on load
+    // Hydration replays the prerendered HTTP responses, so the content API isn't re-queried on load
     provideClientHydration(withEventReplay()),
   ],
 };

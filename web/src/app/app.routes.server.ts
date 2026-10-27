@@ -1,19 +1,16 @@
 import { HttpClient } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { PrerenderFallback, RenderMode, ServerRoute } from '@angular/ssr';
-import { PAGE_SLUGS_QUERY, POST_SLUGS_QUERY, PROJECT_SLUGS_QUERY } from './core/queries';
-import { sanityFetch } from './core/sanity';
-import { isSanityConfigured } from './core/sanity.config';
+import { contentFetch } from './core/content-api';
 
 /**
  * Fetches every slug for a document type at build time so each one is
  * prerendered to static HTML. Unknown slugs fall back to client rendering.
  */
-function slugParams(query: string) {
+function slugParams(path: string) {
   return async () => {
-    if (!isSanityConfigured) return [];
-    const slugs = await sanityFetch<(string | null)[]>(inject(HttpClient), query);
-    return slugs.filter((slug): slug is string => !!slug).map((slug) => ({ slug }));
+    const slugs = (await contentFetch<string[]>(inject(HttpClient), path)) ?? [];
+    return slugs.map((slug) => ({ slug }));
   };
 }
 
@@ -24,13 +21,13 @@ export const serverRoutes: ServerRoute[] = [
   {
     path: 'blog/:slug',
     renderMode: RenderMode.Prerender,
-    getPrerenderParams: slugParams(POST_SLUGS_QUERY),
+    getPrerenderParams: slugParams('/posts/slugs'),
     fallback: PrerenderFallback.Client,
   },
   {
     path: 'projects/:slug',
     renderMode: RenderMode.Prerender,
-    getPrerenderParams: slugParams(PROJECT_SLUGS_QUERY),
+    getPrerenderParams: slugParams('/projects/slugs'),
     fallback: PrerenderFallback.Client,
   },
   { path: 'login', renderMode: RenderMode.Prerender },
@@ -42,10 +39,12 @@ export const serverRoutes: ServerRoute[] = [
   { path: 'events/**', renderMode: RenderMode.Client },
   { path: 'profile', renderMode: RenderMode.Client },
   { path: 'unsubscribe', renderMode: RenderMode.Client },
+  { path: 'admin', renderMode: RenderMode.Client },
+  { path: 'admin/**', renderMode: RenderMode.Client },
   {
     path: ':slug',
     renderMode: RenderMode.Prerender,
-    getPrerenderParams: slugParams(PAGE_SLUGS_QUERY),
+    getPrerenderParams: slugParams('/pages/slugs'),
     fallback: PrerenderFallback.Client,
   },
   // Everything else (e.g. 404s) is rendered in the browser from index.csr.html

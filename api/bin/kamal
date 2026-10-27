@@ -1,0 +1,27 @@
+#!/bin/bash
+# Runs Kamal in Docker (same version as the Gemfile), so deploying needs no
+# local Ruby. Host networking lets the boxes pull images through Kamal's SSH
+# tunnel to the local registry. The deploy key defaults to
+# ~/.ssh/personal-website-deploy (override with KAMAL_SSH_KEY).
+#
+#   bin/kamal deploy -d production
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+key="${KAMAL_SSH_KEY:-$HOME/.ssh/personal-website-deploy}"
+[ -f "$key" ] || { echo "Deploy key not found: $key" >&2; exit 1; }
+
+# Git Bash on Windows: hand Docker Windows paths, and don't let MSYS rewrite them
+native() { (cd "$1" && (pwd -W 2>/dev/null || pwd)); }
+# The whole repository is mounted: Kamal versions deploys by git commit
+repo=$(native ..)
+keyfile="$(native "$(dirname "$key")")/$(basename "$key")"
+tty=()
+[ -t 0 ] && [ -t 1 ] && tty=(-t)
+
+MSYS_NO_PATHCONV=1 exec docker run --rm -i "${tty[@]}" --network host \
+  -v "$repo:/repo" -w /repo/api \
+  -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
+  -v "$keyfile:/root/.ssh/deploy_key:ro" \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  ghcr.io/basecamp/kamal:v2.12.0 "$@"

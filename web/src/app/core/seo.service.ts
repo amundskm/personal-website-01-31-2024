@@ -1,13 +1,13 @@
 import { DOCUMENT, effect, inject, Injectable, signal } from '@angular/core';
 import { Meta, Title } from '@angular/platform-browser';
-import { urlFor } from './image';
-import type { SanityImage, Seo, SiteSettings } from './models';
+import { imageUrl } from './image';
+import type { CmsImage, Seo, SiteSettings } from './models';
 
 export interface PageMeta {
   title?: string | null;
   description?: string | null;
-  image?: SanityImage | null;
-  seo?: Seo;
+  image?: CmsImage | null;
+  seo?: Seo | null;
   type?: 'website' | 'article';
 }
 
@@ -45,7 +45,8 @@ export class SeoService {
       site?.description ??
       '';
     const image = page?.seo?.image ?? page?.image ?? site?.seo?.image;
-    const imageUrl = urlFor(image)?.width(1200).height(630).fit('crop').url() ?? null;
+    // The social card size; the content API allows this ratio for it
+    const shareImage = imageUrl(image, 1200, 630);
     const noIndex = page?.seo?.noIndex ?? site?.seo?.noIndex ?? false;
 
     if (fullTitle) this.title.setTitle(fullTitle);
@@ -54,8 +55,8 @@ export class SeoService {
     this.setTag('property', 'og:description', description);
     this.setTag('property', 'og:type', page?.type ?? 'website');
     this.setTag('property', 'og:url', this.document.location?.href ?? '');
-    this.setTag('property', 'og:image', imageUrl);
-    this.setTag('name', 'twitter:card', imageUrl ? 'summary_large_image' : 'summary');
+    this.setTag('property', 'og:image', shareImage);
+    this.setTag('name', 'twitter:card', shareImage ? 'summary_large_image' : 'summary');
     this.setTag('name', 'robots', noIndex ? 'noindex, nofollow' : null);
   }
 

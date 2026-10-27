@@ -14,12 +14,19 @@ export const groupEvents = defineFunction({
   runtime: 22,
   timeoutSeconds: 60,
   environment: {
-    SITE_URL: 'https://neiaboiz.com',
+    // Links in emails: this branch's site (Amplify build variable SITE_URL), else production
+    SITE_URL: process.env['SITE_URL'] || 'https://neiaboiz.com',
     MAIL_FROM: `NEIA Boiz <${EVENTS_FROM_ADDRESS}>`,
     // A Discord channel webhook; new polls and events for everyone are posted there.
     // Set in the Amplify console (Hosting → Secrets) or `npx ampx sandbox secret set`.
     // Loaded when the function starts: redeploy to apply a changed URL right away.
     // Keep it defined (deploys require every referenced secret to exist).
     DISCORD_WEBHOOK_URL: secret('DISCORD_WEBHOOK_URL'),
+    // Only branches with their own channel post: main (the real channel) and
+    // qa (a test channel), each with its own DISCORD_WEBHOOK_URL branch secret.
+    // Sandboxes never post. AWS_BRANCH is set by Amplify builds.
+    DISCORD_ENABLED: ['main', 'qa'].includes(process.env['AWS_BRANCH'] ?? '') ? 'true' : 'false',
+    // Named in failure emails, so it's clear which environment failed
+    BRANCH: process.env['AWS_BRANCH'] || 'sandbox',
   },
 });

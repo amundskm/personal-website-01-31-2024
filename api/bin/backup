@@ -1,0 +1,55 @@
+#!/usr/bin/env ruby
+# Database backups to S3, without loading Rails (it runs beside the app on a
+# small box). Uses the app's DB_* settings and BACKUP_BUCKET.
+#
+#   bin/backup dump                       # pg_dump to s3://$BACKUP_BUCKET/$BACKUP_PREFIX/<time>.dump
+#   bin/backup list [prefix]              # newest first
+#   bin/backup restore latest [prefix]    # replaces this database with the newest dump
+#   bin/backup restore <key>
+#
+# BACKUP_PREFIX is this environment's folder ("production"). QA restores from
+# production's: `bin/backup restore latest production`.
+require "bundler/setup"
+require "aws-sdk-s3"
+require "tempfile"
+require "time"
+
+BUCKET = ENV.fetch("BACKUP_BUCKET")
+PREFIX = ENV.fetch("BACKUP_PREFIX", "production")
+S3 = Aws::S3::Client.new(region: ENV.fetch("AWS_REGION", "us-east-2"))
+
+# libpq reads these, so no password ends up on a command line
+ENV["PGHOST"] = ENV.fetch("DB_HOST")
+ENV["PGUSER"] = ENV.fetch("DB_USER")
+ENV["PGPASSWORD"] = ENV.fetch("DB_PASSWORD")
+ENV["PGDATABASE"] = ENV.fetch("DB_NAME")
+
+def run!(*command)
+  system(*command, exception: true)
+end
+
+def keys(prefix)
+  S3.list_objects_v2(bucket: BUCKET, prefix: "#{prefix}/").flat_map(&:contents).sort_by(&:last_modified).reverse.map(&:key)
+end
+
+case ARGV[0]
+when "dump"
+  Tempfile.create(["backup", ".dump"]) do |file|
+    run!("pg_dump", "--format=custom", "--no-owner", "--file", file.path)
+    key = "#{PREFIX}/#{Time.now.utc.strftime('%Y-%m-%dT%H%M%SZ')}.dump"
+    File.open(file.path, "rb") { |body| S3.put_object(bucket: BUCKET, key:, body:, server_side_encryption: "AES256") }
+    puts "Backed up to s3://#{BUCKET}/#{key} (#{File.size(file.path)} bytes)"
+  end
+when "list"
+  puts keys(ARGV[1] || PREFIX)
+when "restore"
+  key = ARGV[1] == "latest" || ARGV[1].nil? ? keys(ARGV[2] || PREFIX).first : ARGV[1]
+  abort "No backups found" unless key
+  Tempfile.create(["restore", ".dump"]) do |file|
+    S3.get_object(bucket: BUCKET, key:, response_target: file.path)
+    run!("pg_restore", "--clean", "--if-exists", "--no-owner", "--single-transaction", "--dbname", ENV["PGDATABASE"], file.path)
+  end
+  puts "Restored s3://#{BUCKET}/#{key}"
+else
+  abort "Usage: bin/backup dump | list [prefix] | restore latest|<key> [prefix]"
+end

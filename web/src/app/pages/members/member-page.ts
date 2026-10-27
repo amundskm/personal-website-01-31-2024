@@ -1,14 +1,15 @@
 import { ChangeDetectionStrategy, Component, effect, inject, input, resource } from '@angular/core';
 import { BlockRenderer } from '../../blocks/block-renderer';
 import { AuthService } from '../../core/auth/auth.service';
-import type { MEMBER_PAGE_QUERY_RESULT } from '../../core/sanity.types';
+import { segment } from '../../core/content-api';
+import type { MemberPage as MemberPageContent } from '../../core/models';
 import { SeoService } from '../../core/seo.service';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
 import { NotFound } from '../not-found/not-found';
 
 /**
- * A members-only page from the private dataset. The members API returns 404
- * both for missing pages and for pages not shared with the user.
+ * A members-only page. The content API returns 404 both for missing pages and
+ * for pages not shared with the user.
  */
 @Component({
   selector: 'app-member-page',
@@ -41,9 +42,7 @@ export class MemberPage {
   protected readonly page = resource({
     params: () => ({ slug: this.slug() }),
     loader: ({ params }) =>
-      this.auth.fetchMembersApi<MEMBER_PAGE_QUERY_RESULT>(
-        `/pages/${encodeURIComponent(params.slug)}`,
-      ),
+      this.auth.fetchContentApi<MemberPageContent>(`/members/pages/${segment(params.slug)}`),
   });
 
   constructor() {

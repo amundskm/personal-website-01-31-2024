@@ -7,8 +7,7 @@
     "dev": "sanity dev",
     "start": "sanity start",
     "build": "sanity build",
-    "deploy": "sanity deploy",
-    "typegen": "sanity schema extract --workspace=default --path=./schema.json --force && sanity typegen generate"
+    "deploy": "sanity deploy"
   },
   "dependencies": {
     "@sanity/code-input": "^7.3.9",

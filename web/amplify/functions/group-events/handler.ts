@@ -31,6 +31,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from '$amplify/env/group-events';
 import { hasAnyRole } from '../../../src/app/core/auth/roles';
 import {
+  discordFailureEmail,
   discordMessage,
   postsToDiscord,
   sendToDiscord,
@@ -1429,14 +1430,54 @@ async function notifyRole(event: GroupEvent, actor: Caller, memberId: string, ro
  * a deleted channel or webhook, rate limiting or an outage is only logged.
  */
 async function postToDiscord(event: GroupEvent, caller: Caller): Promise<void> {
+  if (process.env['DISCORD_ENABLED'] !== 'true') {
+    console.log(
+      'Discord: posting is off for this branch (DISCORD_ENABLED), so nothing was posted.',
+    );
+    return;
+  }
   const members = await loadMembers().catch(() => []);
   // Without the member list a group event can't be checked, so it isn't posted
   if (!postsToDiscord(event, members)) return;
   const by = members.find((m) => m.id === caller.id)?.name ?? 'Someone';
-  await sendToDiscord(
-    env.DISCORD_WEBHOOK_URL,
-    discordMessage(event, by, `${env.SITE_URL}/events/${event.id}`),
-  );
+  const url = `${env.SITE_URL}/events/${event.id}`;
+  const result = await sendToDiscord(env.DISCORD_WEBHOOK_URL, discordMessage(event, by, url));
+  // No fallback channel: a failed post is reported to the admins instead
+  if (result !== 'sent') {
+    await emailAdmins(discordFailureEmail(result, event, url, process.env['BRANCH'] ?? 'unknown'));
+  }
+}
+
+/** Sends an operational alert to everyone in the admin group (ignores email preferences). */
+async function emailAdmins(email: Email): Promise<void> {
+  try {
+    const admins = await listGroup('admin');
+    const addresses = admins
+      .filter((user) => user.Enabled)
+      .map((user) => user.Attributes?.find((a) => a.Name === 'email')?.Value)
+      .filter((address): address is string => !!address);
+    await Promise.all(
+      addresses.map((address) =>
+        ses.send(
+          new SendEmailCommand({
+            FromEmailAddress: env.MAIL_FROM,
+            Destination: { ToAddresses: [address] },
+            Content: {
+              Simple: {
+                Subject: { Data: email.subject, Charset: 'UTF-8' },
+                Body: {
+                  Text: { Data: email.text, Charset: 'UTF-8' },
+                  Html: { Data: email.html, Charset: 'UTF-8' },
+                },
+              },
+            },
+          }),
+        ),
+      ),
+    );
+  } catch (error) {
+    console.error('Could not email the admins:', String(error));
+  }
 }
 
 /** Sends one email to one member. A failure is logged, not fatal. */

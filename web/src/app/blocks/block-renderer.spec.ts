@@ -71,7 +71,7 @@ describe('BLOCK_REGISTRY', () => {
     caption: 'A caption',
     asset: {
       _id: 'image-abc123-1600x900-jpg',
-      url: 'https://cdn.sanity.io/images/your-project-id/production/abc123-1600x900.jpg',
+      url: 'https://api.example.com/images/image-abc123-1600x900-jpg?s=0123456789abcdef',
       metadata: { lqip: null, dimensions: { width: 1600, height: 900, aspectRatio: 16 / 9 } },
     },
   };
@@ -176,7 +176,9 @@ describe('BLOCK_REGISTRY', () => {
     }
     expect(el.querySelector('h1')?.textContent).toBe('Hero heading');
     expect(el.querySelector('a.btn.btn--primary')?.getAttribute('href')).toBe('/contact');
-    expect(el.querySelector('img')?.getAttribute('srcset')).toContain('cdn.sanity.io');
+    expect(el.querySelector('img')?.getAttribute('srcset')).toContain(
+      'https://api.example.com/images/image-abc123-1600x900-jpg?s=0123456789abcdef&w=320',
+    );
   });
 });
 

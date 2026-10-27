@@ -1,12 +1,12 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import type { ProjectCard } from '../../core/models';
-import { SanityImageComponent } from '../sanity-image/sanity-image';
+import { CmsImageComponent } from '../cms-image/cms-image';
 import { WizardHat } from '../wizard/wizard-hat';
 
 @Component({
   selector: 'app-project-card',
-  imports: [RouterLink, SanityImageComponent, WizardHat],
+  imports: [RouterLink, CmsImageComponent, WizardHat],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <article class="card">
@@ -17,7 +17,7 @@ import { WizardHat } from '../wizard/wizard-hat';
           tabindex="-1"
           aria-hidden="true"
         >
-          <app-sanity-image
+          <app-cms-image
             [image]="project().coverImage"
             [width]="640"
             [aspectRatio]="4 / 3"

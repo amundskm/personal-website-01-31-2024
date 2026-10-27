@@ -1,0 +1,12 @@
+#!/bin/bash
+# The "backup" role (config/deploy.production.yml): a dump at 09:00 UTC
+# (3 or 4 am Central) every day. Old dumps expire through the bucket's lifecycle rule.
+set -u
+
+while true; do
+  now=$(date -u +%s)
+  next=$(date -u -d "09:00" +%s)
+  [ "$next" -le "$now" ] && next=$((next + 86400))
+  sleep $((next - now))
+  bin/backup dump || echo "Backup failed" >&2
+done

@@ -1,0 +1,24 @@
+# QA: a temporary box at qa-api.neiaboiz.com, created by bin/qa-up and
+# deleted by bin/qa-down (see config/deploy.yml). No backups: its data is a
+# copy of production's.
+servers:
+  web:
+    - qa-api.neiaboiz.com
+
+proxy:
+  host: qa-api.neiaboiz.com
+
+env:
+  clear:
+    APP_HOST: qa-api.neiaboiz.com
+    PUBLIC_API_URL: https://qa-api.neiaboiz.com
+    CORS_ORIGINS: https://qa.drxw6dozfluwp.amplifyapp.com
+    S3_BUCKET: neiaboiz-site-images-qa
+    BACKUP_PREFIX: qa
+    # The qa branch's user pool (Amplify backend)
+    COGNITO_USER_POOL_ID: us-east-2_7kioCfe2z
+    COGNITO_CLIENT_ID: 2nvj8msg75p9sev8vvlilg9689
+
+accessories:
+  db:
+    host: qa-api.neiaboiz.com

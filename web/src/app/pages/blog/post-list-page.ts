@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit } from '@angular/core';
-import { POSTS_QUERY } from '../../core/queries';
-import { sanityResource } from '../../core/sanity';
-import type { POSTS_QUERY_RESULT } from '../../core/sanity.types';
+import { contentResource } from '../../core/content-api';
+import type { PostCard } from '../../core/models';
 import { SeoService } from '../../core/seo.service';
 import { PostCardComponent } from '../../shared/cards/post-card';
 import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status';
@@ -18,9 +17,10 @@ import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status
           <p class="section-intro">Notes, write-ups and things I've learned.</p>
         </header>
         @if (posts.hasValue()) {
-          @if (posts.value().length) {
+          @let list = posts.value() ?? [];
+          @if (list.length) {
             <div class="grid">
-              @for (post of posts.value(); track post._id) {
+              @for (post of list; track post._id) {
                 <app-post-card [post]="post" />
               }
             </div>
@@ -38,7 +38,7 @@ import { LoadErrorComponent, LoadingComponent } from '../../shared/status/status
 })
 export class PostListPage implements OnInit {
   private readonly seo = inject(SeoService);
-  protected readonly posts = sanityResource<POSTS_QUERY_RESULT>(POSTS_QUERY);
+  protected readonly posts = contentResource<PostCard[]>('/posts');
 
   ngOnInit(): void {
     this.seo.setPage({ title: 'Blog' });

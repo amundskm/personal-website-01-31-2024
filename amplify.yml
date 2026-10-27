@@ -21,8 +21,11 @@ applications:
             - nvm use 24
         build:
           commands:
-            # Prerenders every page, post and project currently published in Sanity
-            - npm run build
+            # This branch's content API (the Rails app in api/), set per branch under
+            # Hosting → Environment variables. Prerendering reads every page, post and
+            # project from it, so the build fails if it's missing or unreachable.
+            - if [ -z "$CONTENT_API_URL" ]; then echo "Set the CONTENT_API_URL environment variable for this branch" >&2; exit 1; fi
+            - npm run build -- --define "CONTENT_API_URL=\"$CONTENT_API_URL\""
       artifacts:
         baseDirectory: dist/web/browser
         files:
