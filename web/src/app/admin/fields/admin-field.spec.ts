@@ -17,6 +17,8 @@ function render(field: Field, value?: Json, parent: Record<string, Json> = {}) {
               { id: 'p1', type: 'page', title: 'About', slug: 'about', status: 'published' },
               { id: 'x1', type: 'project', title: 'Robot', slug: 'robot', status: 'new' },
             ]),
+          images: () =>
+            Promise.resolve([{ id: 'image-tree', thumbnailUrl: 'https://api.example.com/t.png', width: 4, height: 3, filename: 't.png' }]),
         },
       },
     ],
@@ -173,5 +175,23 @@ describe('AdminField', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect(el.querySelector('select')!.selectedOptions[0].textContent).toContain('Robot (unpublished)');
+  });
+
+  it('adds a gallery image only after it is confirmed in the dialog', async () => {
+    const { el, fixture, last, emitted } = render({ name: 'gallery', title: 'Gallery', kind: 'images' });
+    click(button(el, 'Add image'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const dialog = el.querySelector<HTMLDialogElement>('app-image-dialog dialog')!;
+    click(dialog.querySelector('.adm-library__item'));
+    fixture.detectChanges();
+    expect(emitted).toEqual([]);
+
+    click([...dialog.querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Add image')!);
+    fixture.detectChanges();
+    expect(last()).toEqual([
+      expect.objectContaining({ _type: 'accessibleImage', asset: { _type: 'reference', _ref: 'image-tree' } }),
+    ]);
   });
 });

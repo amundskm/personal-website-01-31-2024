@@ -10,6 +10,8 @@ import { newKey } from '../schema';
 export interface RichTextOptions {
   /** Thumbnail URL for an image asset id, if known. */
   thumbnail: (assetId: string) => string | undefined;
+  /** An image in the text was clicked (at this document position). */
+  editImage?: (pos: number) => void;
 }
 
 /** Attributes that carry Portable Text data the editor doesn't display. */
@@ -72,7 +74,11 @@ const StableKeys = Extension.create({
 });
 
 /** A block stored whole: an image usage, or a block type the editor doesn't know. */
-function atomBlock(name: string, render: (data: Record<string, unknown>, dom: HTMLElement) => void) {
+function atomBlock(
+  name: string,
+  render: (data: Record<string, unknown>, dom: HTMLElement) => void,
+  onClick?: (pos: number) => void,
+) {
   return Node.create({
     name,
     group: 'block',
@@ -89,10 +95,17 @@ function atomBlock(name: string, render: (data: Record<string, unknown>, dom: HT
       return ['div', { [`data-${name}`]: '' }];
     },
     addNodeView() {
-      return ({ node }) => {
+      return ({ node, getPos }) => {
         const dom = document.createElement('figure');
         dom.className = `rt-atom rt-atom--${name}`;
         dom.contentEditable = 'false';
+        if (onClick) {
+          dom.title = 'Click to edit';
+          dom.addEventListener('click', () => {
+            const pos = getPos();
+            if (typeof pos === 'number') onClick(pos);
+          });
+        }
         render((node.attrs['data'] ?? {}) as Record<string, unknown>, dom);
         return {
           dom,
@@ -123,7 +136,7 @@ export function richTextExtensions(options: RichTextOptions): Extensions {
     }
     const caption = String(data['caption'] ?? data['alt'] ?? '');
     if (caption) dom.append(Object.assign(document.createElement('figcaption'), { textContent: caption }));
-  });
+  }, options.editImage);
 
   const PtUnknown = atomBlock('ptUnknown', (data, dom) => {
     dom.textContent = `Unsupported block (${String(data['_type'] ?? 'unknown')}): kept as is`;

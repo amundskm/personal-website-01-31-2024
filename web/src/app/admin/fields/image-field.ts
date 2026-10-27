@@ -80,7 +80,7 @@ import { asObject, type JsonObject, withField } from '../schema';
         <button type="button" class="btn btn--secondary adm-btn-sm" (click)="libraryOpen.set(!libraryOpen())">
           {{ libraryOpen() ? 'Close library' : 'Choose from library' }}
         </button>
-        @if (assetId()) {
+        @if (assetId() && removable()) {
           <button type="button" class="btn btn--text" (click)="valueChange.emit(undefined)">Remove image</button>
         }
       </div>
@@ -117,6 +117,8 @@ export class ImageField {
   readonly caption = input(false);
   /** Show the library straight away (when picking a new image in a dialog). */
   readonly openLibrary = input(false);
+  /** Offer "Remove image" (off in dialogs, which have their own). */
+  readonly removable = input(true);
   readonly valueChange = output<JsonObject | undefined>();
 
   protected readonly uploading = signal(false);

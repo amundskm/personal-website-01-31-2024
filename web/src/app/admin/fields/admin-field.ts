@@ -14,7 +14,7 @@ import {
   withField,
 } from '../schema';
 import { ImageField } from './image-field';
-import { ImagePickerDialog } from './image-picker-dialog';
+import { ImageDialog } from './image-dialog';
 import { ReferenceSelect } from './reference-select';
 import { RichTextField } from './rich-text-field';
 import { TagsField } from './tags-field';
@@ -26,7 +26,7 @@ import { TagsField } from './tags-field';
  */
 @Component({
   selector: 'app-admin-field',
-  imports: [NgTemplateOutlet, ImageField, ImagePickerDialog, ReferenceSelect, RichTextField, TagsField],
+  imports: [NgTemplateOutlet, ImageDialog, ImageField, ReferenceSelect, RichTextField, TagsField],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let f = field();
@@ -145,8 +145,8 @@ import { TagsField } from './tags-field';
                   </li>
                 }
               </ol>
-              <button type="button" class="btn btn--secondary adm-btn-sm" (click)="galleryPicker.show()">Add image</button>
-              <app-image-picker-dialog #galleryPicker (picked)="addImage($event)" />
+              <button type="button" class="btn btn--secondary adm-btn-sm" (click)="galleryDialog.add()">Add image</button>
+              <app-image-dialog #galleryDialog (saved)="addImage($event)" />
             }
             @case ('list') {
               <ng-container *ngTemplateOutlet="items; context: { types: [asField('list').of] }" />

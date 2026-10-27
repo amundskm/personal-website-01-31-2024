@@ -321,6 +321,12 @@
 
   &__actions {
     justify-content: flex-end;
+    align-items: center;
+  }
+
+  // Pushes a button (e.g. "Remove image") to the start of the action row
+  &__start {
+    margin-right: auto;
   }
 }
 

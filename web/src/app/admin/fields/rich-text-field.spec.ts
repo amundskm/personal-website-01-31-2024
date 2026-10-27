@@ -148,34 +148,86 @@ describe('RichTextField', () => {
     expect(block.children).toEqual([expect.objectContaining({ text: 'Docs', marks: [] })]);
   });
 
-  it('adds an image picked in the dialog and shows its alt text and caption', async () => {
+  it('adds an image only once it is chosen and confirmed', async () => {
     const { fixture, el, button, last } = await render([paragraph('a', 'Text')]);
     button('Insert image').click();
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
-    const picker = dialog(el, 'app-image-picker-dialog dialog');
-    expect(picker.open()).toBe(true);
-    expect(last()).toBeUndefined(); // Nothing added until an image is chosen
+    const images = dialog(el, 'app-image-dialog dialog');
+    expect(images.open()).toBe(true);
+    expect(images.button('Add image').disabled).toBe(true);
 
-    picker.element.querySelector<HTMLButtonElement>('.adm-library__item')!.click();
+    // Choosing shows the image's details; nothing is added yet
+    images.element.querySelector<HTMLButtonElement>('.adm-library__item')!.click();
     fixture.detectChanges();
-    expect(picker.open()).toBe(false);
+    expect(images.open()).toBe(true);
+    expect(last()).toBeUndefined();
+    const alt = images.element.querySelector<HTMLInputElement>('app-image-field input[type=text]')!;
+    alt.value = 'A tree';
+    alt.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    images.button('Add image').click();
+    fixture.detectChanges();
+    expect(images.open()).toBe(false);
     expect(last()).toContainEqual(
-      expect.objectContaining({ _type: 'accessibleImage', asset: { _type: 'reference', _ref: 'image-tree' } }),
+      expect.objectContaining({ _type: 'accessibleImage', alt: 'A tree', asset: { _type: 'reference', _ref: 'image-tree' } }),
     );
-    expect(el.querySelector('.rt-panel[aria-label="Selected image"] app-image-field')).not.toBeNull();
   });
 
-  it('adds nothing when the image dialog is cancelled', async () => {
+  it('adds nothing when the image dialog is cancelled, even after choosing', async () => {
     const { fixture, el, button, emitted } = await render([paragraph('a', 'Text')]);
     button('Insert image').click();
     fixture.detectChanges();
-    const picker = dialog(el, 'app-image-picker-dialog dialog');
-    picker.button('Cancel').click();
+    await fixture.whenStable();
     fixture.detectChanges();
-    expect(picker.open()).toBe(false);
+    const images = dialog(el, 'app-image-dialog dialog');
+    images.element.querySelector<HTMLButtonElement>('.adm-library__item')!.click();
+    fixture.detectChanges();
+    images.button('Cancel').click();
+    fixture.detectChanges();
+    expect(images.open()).toBe(false);
     expect(emitted).toEqual([]);
+  });
+
+  it('edits an image in its own dialog: Cancel discards, Save applies, Remove deletes', async () => {
+    const tree = {
+      _type: 'accessibleImage',
+      _key: 'img',
+      alt: 'Old alt',
+      asset: { _type: 'reference', _ref: 'image-tree' },
+    };
+    const { fixture, el, last } = await render([paragraph('a', 'Text'), tree]);
+    const images = dialog(el, 'app-image-dialog dialog');
+    const openEditor = () => {
+      el.querySelector<HTMLElement>('.rt-atom--ptImage')!.click();
+      fixture.detectChanges();
+      return images.element.querySelector<HTMLInputElement>('app-image-field input[type=text]')!;
+    };
+    const setAlt = (input: HTMLInputElement, text: string) => {
+      input.value = text;
+      input.dispatchEvent(new Event('input'));
+      fixture.detectChanges();
+    };
+
+    let alt = openEditor();
+    expect(images.open()).toBe(true);
+    expect(el.querySelector('#image-dialog-title')!.textContent).toBe('Edit image');
+    expect(alt.value).toBe('Old alt');
+    setAlt(alt, 'Discarded');
+    images.button('Cancel').click();
+    expect(last()).toBeUndefined();
+
+    alt = openEditor();
+    expect(alt.value).toBe('Old alt');
+    setAlt(alt, 'New alt');
+    images.button('Save').click();
+    expect(last()).toContainEqual(expect.objectContaining({ _key: 'img', alt: 'New alt' }));
+
+    openEditor();
+    images.button('Remove image').click();
+    expect((last() as { _type: string }[]).map((b) => b._type)).toEqual(['block']);
   });
 
   it('loads a new value from outside, e.g. a discarded draft', async () => {

@@ -17,8 +17,7 @@ import { EditorContext } from '../editor-context';
 import { richTextExtensions } from '../rich-text/extensions';
 import { fromDoc, type PmNode, toDoc } from '../rich-text/portable-text-doc';
 import type { Json, JsonObject } from '../schema';
-import { ImageField } from './image-field';
-import { ImagePickerDialog } from './image-picker-dialog';
+import { ImageDialog } from './image-dialog';
 import { LinkDialog, type LinkValue } from './link-dialog';
 
 /** Languages offered for code blocks (as in the old Studio). */
@@ -69,7 +68,7 @@ const EMPTY_STATE: SelectionState = {
  */
 @Component({
   selector: 'app-rich-text-field',
-  imports: [ImageField, ImagePickerDialog, LinkDialog],
+  imports: [ImageDialog, LinkDialog],
   changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './rich-text-field.scss',
   template: `
@@ -99,10 +98,11 @@ const EMPTY_STATE: SelectionState = {
         <button type="button" title="Redo (Ctrl+Shift+Z)" (click)="run((c) => c.redo())" aria-label="Redo">↷</button>
       </div>
 
-      @if (state().image; as image) {
-        <div class="rt-panel" aria-label="Selected image">
-          <p class="rt-panel__title">Selected image</p>
-          <app-image-field [value]="image" [caption]="true" (valueChange)="updateImage($event)" />
+      @if (state().image) {
+        <div class="rt-panel rt-panel--bar">
+          <span class="rt-panel__title">Image selected</span>
+          <button type="button" class="btn btn--secondary adm-btn-sm" (click)="editSelectedImage()">Edit image</button>
+          <button type="button" class="btn btn--text adm-danger" (click)="run((c) => c.deleteSelection())">Remove</button>
         </div>
       }
 
@@ -128,7 +128,7 @@ const EMPTY_STATE: SelectionState = {
     </div>
 
     <app-link-dialog #linkDialog (applied)="applyLink($event)" (removed)="removeLink()" />
-    <app-image-picker-dialog #imagePicker (picked)="insertImage($event)" />
+    <app-image-dialog (saved)="saveImage($event)" (removed)="removeImage()" />
   `,
 })
 export class RichTextField {
@@ -150,17 +150,20 @@ export class RichTextField {
   protected readonly state = signal<SelectionState>(EMPTY_STATE);
   protected readonly focused = signal(false);
   private readonly linkDialog = viewChild.required(LinkDialog);
-  private readonly imagePicker = viewChild.required(ImagePickerDialog);
+  private readonly imageDialog = viewChild.required(ImageDialog);
   /** What the open link dialog applies to: the selection, or the link being edited. */
   private linkRange = { from: 0, to: 0 };
-  /** Where the image being picked goes: after the block the cursor was in. */
-  private imagePosition = 0;
+  /** The image dialog's target: where a new image goes, or the image being edited. */
+  private imageTarget: { editing: boolean; pos: number } = { editing: false, pos: 0 };
 
   constructor() {
     afterNextRender(() => {
       this.editor = new Editor({
         element: this.content().nativeElement,
-        extensions: richTextExtensions({ thumbnail: (id) => this.context.assets()[id]?.thumbnailUrl }),
+        extensions: richTextExtensions({
+          thumbnail: (id) => this.context.assets()[id]?.thumbnailUrl,
+          editImage: (pos) => this.editImage(pos),
+        }),
         content: toDoc(this.blocks()),
         onUpdate: ({ editor }) => this.emit(editor),
         onTransaction: ({ editor }) => this.state.set(readState(editor)),
@@ -245,30 +248,45 @@ export class RichTextField {
     this.editor?.chain().focus().setTextSelection({ from, to }).unsetLink().run();
   }
 
-  /** Opens the image dialog; the image goes after the block the cursor is in. */
+  /** Opens the image dialog to add one after the block the cursor is in. */
   protected openImagePicker(): void {
     const editor = this.editor;
     if (!editor) return;
     const { selection } = editor.state;
-    this.imagePosition = selection.$from.depth ? selection.$from.after(1) : selection.to;
-    this.imagePicker().show();
+    this.imageTarget = { editing: false, pos: selection.$from.depth ? selection.$from.after(1) : selection.to };
+    this.imageDialog().add();
   }
 
-  /** Adds the chosen image and selects it, which shows its alt text and caption. */
-  protected insertImage(image: JsonObject): void {
-    const pos = Math.min(this.imagePosition, this.editor?.state.doc.content.size ?? 0);
-    this.editor
-      ?.chain()
-      .focus()
-      .insertContentAt(pos, { type: 'ptImage', attrs: { data: { _type: 'accessibleImage', ...image } } })
-      .setNodeSelection(pos)
-      .run();
+  protected editSelectedImage(): void {
+    const selection = this.editor?.state.selection;
+    if (selection instanceof NodeSelection) this.editImage(selection.from);
   }
 
-  /** Changes the selected image, or removes it when the image field is cleared. */
-  protected updateImage(data: JsonObject | undefined): void {
-    if (!data) this.run((c) => c.deleteSelection());
-    else this.editor?.commands.updateAttributes('ptImage', { data: { _type: 'accessibleImage', ...data } });
+  /** Opens the image dialog for the image at `pos` (clicked, or selected). */
+  private editImage(pos: number): void {
+    const node = this.editor?.state.doc.nodeAt(pos);
+    if (node?.type.name !== 'ptImage') return;
+    this.imageTarget = { editing: true, pos };
+    this.imageDialog().edit((node.attrs['data'] ?? {}) as JsonObject);
+  }
+
+  /** Adds the image from the dialog, or saves changes to the one being edited. */
+  protected saveImage(image: JsonObject): void {
+    const editor = this.editor;
+    if (!editor) return;
+    const data = { _type: 'accessibleImage', ...image };
+    const { editing, pos } = this.imageTarget;
+    if (editing) {
+      editor.chain().focus().setNodeSelection(pos).updateAttributes('ptImage', { data }).run();
+    } else {
+      const at = Math.min(pos, editor.state.doc.content.size);
+      editor.chain().focus().insertContentAt(at, { type: 'ptImage', attrs: { data } }).run();
+    }
+  }
+
+  protected removeImage(): void {
+    const { editing, pos } = this.imageTarget;
+    if (editing) this.editor?.chain().focus().setNodeSelection(pos).deleteSelection().run();
   }
 
   protected updateCode(name: 'language' | 'filename', value: string): void {

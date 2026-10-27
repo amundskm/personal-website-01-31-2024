@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, ElementRef, output, signal, viewChild } from '@angular/core';
-import { closeDialog, showDialog } from './image-picker-dialog';
+import { closeDialog, showDialog } from './image-dialog';
 
 export interface LinkValue {
   text: string;
