@@ -10,7 +10,6 @@ personal-website/
 ├── web/        Angular app (prerendered/static, SCSS)
 │   └── amplify/  Amplify Gen 2 backend: Cognito login + members API (finances, events)
 ├── api/        Content API: Rails + Postgres (pages, posts, projects, members pages, spending plan, images)
-├── studio/     Sanity Studio: the old editor, being replaced (see "Editing content")
 └── amplify.yml AWS Amplify build spec
 ```
 
@@ -28,7 +27,7 @@ npm run dev:web                     # Website     → http://localhost:4200
 ```
 
 The site reads `http://localhost:3000` unless a build sets `CONTENT_API_URL` (see Deploy).
-To load content, import a Sanity export or the sample content into the API (`api/README.md`).
+To load content, import the sample content into the API (`api/README.md`).
 
 ## Editing content
 
@@ -45,8 +44,7 @@ in the account menu).
 - **Site settings** are drafted and published the same way. The **spending plan** saves
   immediately: it isn't public and needs no rebuild.
 
-Sanity Studio is no longer needed for editing. Existing content was copied over with the
-importer (`bin/rails "sanity:import[…]"`, see `api/README.md`).
+Content was moved here from Sanity (no longer used) with the importer in `api/` (see `api/README.md`).
 
 ## How pages are built
 
@@ -222,21 +220,11 @@ deploying, because the backend build fails without them. For a sandbox, use `npx
 
 | Script | What it does |
 |---|---|
-| `npm run dev:web` / `dev:studio` | Start the website / Studio dev servers |
+| `npm run dev:web` | Start the website dev server |
 | `npm run build:web` | Prerender the site to `web/dist/web/browser` |
 | `npm test` | Run the Angular unit tests (Vitest) |
-| `npm run deploy:studio` | Deploy the Studio to `https://<name>.sanity.studio` |
 
 ## Deploy
-
-### Studio (old editor, until the admin pages replace it)
-
-```sh
-npm run deploy:studio
-```
-
-The first deploy asks you to pick a hostname, e.g. `yourname.sanity.studio`.
-Add that URL as a CORS origin with credentials: `npx sanity cors add https://yourname.sanity.studio --credentials`.
 
 ### Website on AWS Amplify
 
