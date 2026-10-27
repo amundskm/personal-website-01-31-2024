@@ -194,4 +194,15 @@ describe('AdminField', () => {
       expect.objectContaining({ _type: 'accessibleImage', asset: { _type: 'reference', _ref: 'image-tree' } }),
     ]);
   });
+
+  it('tidies web addresses typed without https://', () => {
+    const { el, last } = render({ name: 'liveUrl', title: 'Live URL', kind: 'url' });
+    const input = el.querySelector('input')!;
+    expect(input.type).toBe('text');
+    input.value = 'example.com';
+    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new Event('change'));
+    expect(last()).toBe('https://example.com');
+    expect(input.value).toBe('https://example.com');
+  });
 });

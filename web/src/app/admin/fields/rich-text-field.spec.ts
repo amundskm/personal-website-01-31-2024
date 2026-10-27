@@ -80,6 +80,11 @@ describe('RichTextField', () => {
     return {
       open: () => d.hasAttribute('open'),
       input: (id: string) => d.querySelector<HTMLInputElement>(`#${id}`)!,
+      type: (id: string, text: string) => {
+        const input = d.querySelector<HTMLInputElement>(`#${id}`)!;
+        input.value = text;
+        input.dispatchEvent(new Event('input'));
+      },
       button: (text: string) => [...d.querySelectorAll('button')].find((b) => b.textContent!.trim() === text)!,
       element: d,
     };
@@ -94,13 +99,15 @@ describe('RichTextField', () => {
     expect(link.open()).toBe(true);
     expect(link.input('link-dialog-text').value).toBe('Read more');
 
-    link.input('link-dialog-url').value = 'javascript:alert(1)';
-    link.button('Add link').click();
+    link.type('link-dialog-url', 'javascript:alert(1)');
     fixture.detectChanges();
-    expect(link.element.querySelector('[role=alert]')!.textContent).toContain('full address');
-    expect(link.open()).toBe(true);
+    expect(link.element.querySelector('[role=alert]')!.textContent).toContain('Enter a web address');
+    expect(link.button('Add link').disabled).toBe(true);
 
-    link.input('link-dialog-url').value = 'https://example.com';
+    // Typed the way people do: no https://
+    link.type('link-dialog-url', 'example.com');
+    fixture.detectChanges();
+    expect(link.element.textContent).toContain('Links to: https://example.com');
     (link.element.querySelector('input[type=checkbox]') as HTMLInputElement).checked = true;
     link.button('Add link').click();
     fixture.detectChanges();
@@ -120,7 +127,8 @@ describe('RichTextField', () => {
     const link = dialog(el, 'app-link-dialog dialog');
     expect(link.input('link-dialog-text').value).toBe('');
     link.input('link-dialog-text').value = 'my about page';
-    link.input('link-dialog-url').value = '/about';
+    link.type('link-dialog-url', '/about');
+    fixture.detectChanges();
     link.button('Add link').click();
     const [block] = last() as { markDefs: { _key: string; href: string }[]; children: { text: string; marks: string[] }[] }[];
     expect(block.children.map((s) => [s.text, s.marks.length])).toEqual([

@@ -14,6 +14,7 @@ import {
   withField,
 } from '../schema';
 import { ImageField } from './image-field';
+import { normalizeHref } from './link-dialog';
 import { ImageDialog } from './image-dialog';
 import { ReferenceSelect } from './reference-select';
 import { RichTextField } from './rich-text-field';
@@ -155,8 +156,10 @@ import { TagsField } from './tags-field';
               <ng-container *ngTemplateOutlet="items; context: { types: asField('blocks').of }" />
             }
             @default {
-              <input [id]="id()" [type]="f.kind === 'url' ? 'url' : 'text'" [value]="string()"
-                (input)="emit($any($event.target).value)" />
+              <!-- Text, not type=url: the browser would refuse "example.com" -->
+              <input [id]="id()" type="text" [value]="string()" [attr.placeholder]="f.kind === 'url' ? 'example.com' : null"
+                (input)="emit($any($event.target).value)"
+                (change)="f.kind === 'url' && tidyUrl($any($event.target))" />
             }
           }
           @if (f.help) {
@@ -268,6 +271,15 @@ export class AdminField {
   protected toggle(option: string | number, checked: boolean): void {
     const rest = this.list().filter((value) => value !== option);
     this.emitList(checked ? [...rest, option] : rest);
+  }
+
+  /** "example.com" → "https://example.com" (and emails, phones), when leaving the field. */
+  protected tidyUrl(input: HTMLInputElement): void {
+    const href = normalizeHref(input.value);
+    if (href && href !== input.value) {
+      input.value = href;
+      this.emit(href);
+    }
   }
 
   protected generateSlug(): void {
