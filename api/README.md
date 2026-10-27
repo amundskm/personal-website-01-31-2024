@@ -88,15 +88,25 @@ with [Kamal](https://kamal-deploy.org). Images are in S3
 (`neiaboiz-site-images-production`); the database is dumped to
 `neiaboiz-site-backups` every night (kept 30 days).
 
+Releases go through a pipeline (see "Release pipeline" in the main README):
+a merge into `qa` deploys the QA environment, and a merge from `qa` into
+`main` deploys production, builds the live site and shuts QA down. The
+GitHub workflows run the same scripts you can run by hand.
+
 `bin/kamal` runs Kamal in Docker, so no local Ruby is needed. It uses the
-deploy key `~/.ssh/personal-website-deploy`, and each destination's secrets
+deploy key `~/.ssh/personal-website-deploy` (production) or
+`~/.ssh/personal-website-qa-deploy` (QA), and each destination's secrets
 from `.kamal/secrets.<destination>` (git-ignored; keep a copy somewhere safe):
 `SECRET_KEY_BASE`, `DB_PASSWORD`, `POSTGRES_PASSWORD`, `SERVICE_TOKEN`,
 `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` (the `content-api-<destination>` IAM
-user) and `AMPLIFY_WEBHOOK_URL` (that branch's Amplify incoming webhook).
+user) and `AMPLIFY_WEBHOOK_URL` (that branch's Amplify incoming webhook). The
+GitHub environments `qa` and `production` hold the same file as `KAMAL_SECRETS`
+and the key as `DEPLOY_SSH_KEY`: update them there too when one changes.
+
+`bin/kamal deploy`, `setup` and `redeploy` only ship a clean checkout of the
+pipeline branch: `-d qa` from `origin/qa`, `-d production` from `origin/main`.
 
 ```sh
-bin/kamal deploy -d production              # deploy what's in api/ (commit first)
 bin/kamal app logs -d production -f
 bin/kamal app exec -d production --reuse "bin/backup list"
 bin/kamal app exec -d production --reuse "bin/rails console"
@@ -105,13 +115,16 @@ bin/kamal app exec -d production --reuse "bin/rails console"
 ### QA
 
 QA is a temporary box at `qa-api.neiaboiz.com`, behind the password-protected
-Amplify `qa` branch. It costs about a cent an hour while it exists.
+Amplify `qa` branch. It costs about a cent an hour while it exists. The QA
+workflow creates it on a merge into `qa` (a new box starts with production's
+latest backup and images) and the production workflow deletes it after a
+release. By hand:
 
 ```sh
 aws login
-bin/qa-up                                   # copy of production's data and images, then builds the QA site
-bin/kamal deploy -d qa                      # deploy changes to it
-bin/qa-down                                 # delete the box and its DNS record
+bin/qa-up                    # create or update QA from origin/qa, then build the QA site
+bin/qa-down                  # delete the box and its DNS record
+bin/amplify-build qa         # rebuild the QA site and wait for the result
 ```
 
 New boxes are set up by `config/lightsail-init.sh` (swap, Docker, security
