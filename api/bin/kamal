@@ -30,7 +30,7 @@ case "${1:-}" in
       echo "Commit or stash your changes first: $destination only gets what's on origin/$branch." >&2
       exit 1
     fi
-    git fetch -q origin "$branch"
+    git fetch -q origin "+refs/heads/$branch:refs/remotes/origin/$branch"
     if [ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/$branch")" ]; then
       echo "$destination only gets what's on origin/$branch. Check it out (git switch $branch && git pull)," >&2
       echo "or merge your change into $branch through a pull request." >&2

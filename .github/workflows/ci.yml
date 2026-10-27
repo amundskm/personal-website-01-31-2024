@@ -1,10 +1,11 @@
-# Checks every pull request into qa or main. The rulesets on qa and main
-# require these jobs to pass before merging.
+# Checks every pull request into qa; the ruleset on qa requires these jobs
+# to pass (and the branch to be up to date with qa) before merging. main
+# only takes approved releases (see qa.yml), never pull requests.
 name: CI
 
 on:
   pull_request:
-    branches: [qa, main]
+    branches: [qa]
 
 permissions:
   contents: read
@@ -14,19 +15,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  from-qa:
-    name: from-qa
-    runs-on: ubuntu-24.04
-    steps:
-      - name: main only takes changes that went through qa
-        if: >-
-          github.base_ref == 'main' &&
-          (github.head_ref != 'qa' || github.event.pull_request.head.repo.full_name != github.repository)
-        run: |
-          echo "::error::Changes reach main only through qa: open this pull request into qa, then one from qa into main."
-          exit 1
-      - run: echo "OK"
-
   web-tests:
     name: web-tests
     runs-on: ubuntu-24.04
